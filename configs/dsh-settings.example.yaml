@@ -1,0 +1,10 @@
+# Copy this file to $DSH_HOME/settings.yaml and export the referenced key.
+# The value is intentionally an environment variable name, never a secret.
+llm-deepseek:
+  apiKeyEnv: RECA_DSH_DEEPSEEK_API_KEY
+  baseURL: https://sub2api.ziplab.co/v1
+  # The gateway advertises a 65,536-token output limit.
+  maxTokens: 32768
+agent-default-model:
+  provider: deepseek-official
+  model: deepseek-v4-pro

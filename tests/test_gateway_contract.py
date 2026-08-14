@@ -4,9 +4,11 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from gateway.artifacts import public_manifest
 from gateway.recovery import recover_unfinished_runs
+from gateway.jobs import JobManager
 from gateway.schemas import normalize_run_config
 from videorlm.integrations.director.runtime import (
     write_artifact_manifest,
@@ -38,7 +40,10 @@ class GatewayContractTests(unittest.TestCase):
             done.mkdir()
             (done / "state.json").write_text(json.dumps({"run_id": "done", "state": "succeeded"}))
             self.assertEqual(recover_unfinished_runs(tmp_path), ["active"])
-            self.assertEqual(json.loads((active / "state.json").read_text())["state"], "interrupted")
+            recovered = json.loads((active / "state.json").read_text())
+            self.assertEqual(recovered["state"], "interrupted")
+            self.assertEqual(recovered["gateway_state"], "interrupted")
+            self.assertEqual(recovered["stage"], "interrupted")
             self.assertEqual(json.loads((done / "state.json").read_text())["state"], "succeeded")
 
     def test_manifest_publishes_urls_without_reading_file_contents(self) -> None:
@@ -76,6 +81,41 @@ class GatewayContractTests(unittest.TestCase):
             kinds = {item["kind"]: item for item in manifest["artifacts"]}
             self.assertEqual(kinds["audit"]["status"], "skipped")
             self.assertEqual(kinds["run_report"]["status"], "ready")
+
+    def test_reca_runtime_marks_enabled_audit_ready(self) -> None:
+        with tempfile.TemporaryDirectory() as value:
+            tmp_path = Path(value)
+            (tmp_path / "run").mkdir()
+            write_audit_report(tmp_path, state="audited", details={"pass": True})
+            manifest_path = write_artifact_manifest(tmp_path, run_id="audited123")
+            manifest = json.loads(manifest_path.read_text())
+            kinds = {item["kind"]: item for item in manifest["artifacts"]}
+            self.assertEqual(kinds["audit"]["status"], "ready")
+
+    def test_gateway_restart_marks_run_interrupted_and_resume_reuses_run(self) -> None:
+        with tempfile.TemporaryDirectory() as value:
+            runs_root = Path(value)
+            run_id = "a" * 12
+            run = runs_root / run_id
+            run.mkdir()
+            (run / "state.json").write_text(json.dumps({
+                "run_id": run_id,
+                "state": "running",
+                "gateway_state": "running",
+                "stage": "segments",
+            }))
+            (run / "request.json").write_text(json.dumps({
+                "story": "resume this story",
+                "options": {"backend": "wan", "enable_audit": False},
+            }))
+
+            manager = JobManager(root=Path.cwd(), runs_root=runs_root)
+            recovered = json.loads((run / "state.json").read_text())
+            self.assertEqual(recovered["gateway_state"], "interrupted")
+            with patch.object(manager, "start", return_value={"run_id": run_id}) as start:
+                self.assertEqual(manager.resume(run_id), {"run_id": run_id})
+                request = start.call_args.args[0]
+                self.assertEqual(request["options"]["resume_run_id"], run_id)
 
 
 if __name__ == "__main__":

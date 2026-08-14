@@ -40,6 +40,13 @@ dsh plugin --profile web add "file:$PWD/dsh-plugin"
 dsh web
 ```
 
+For the DSH conversation model, copy
+[`configs/dsh-settings.example.yaml`](configs/dsh-settings.example.yaml) to
+`$DSH_HOME/settings.yaml`, then export `RECA_DSH_DEEPSEEK_API_KEY` in the DSH
+process environment. The example uses DSH's `llm-pi-ai` OpenAI-compatible route
+because the team gateway supports `/v1/chat/completions`; ReCA's own planner
+continues to use its separate Messages adapter.
+
 The gateway can also be exercised without DSH:
 
 ```bash

@@ -22,6 +22,10 @@ def recover_unfinished_runs(runs_root: Path) -> list[str]:
         if not isinstance(state, dict) or state.get("state") not in ACTIVE_STATES:
             continue
         state["state"] = "interrupted"
+        # Keep the public Gateway projection in lockstep with the lifecycle
+        # state. ReCA's own state remains untouched and is the business source
+        # of truth for resume decisions.
+        state["gateway_state"] = "interrupted"
         state["stage"] = "interrupted"
         state["error"] = "Gateway restarted before the run reached a terminal state"
         state["recovered_at"] = __import__("time").time()

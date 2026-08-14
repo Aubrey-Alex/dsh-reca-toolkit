@@ -30,6 +30,13 @@ dsh plugin --profile web add "file:$PWD/dsh-plugin"
 dsh web
 ```
 
+DSH 对话模型配置可直接复制
+[`configs/dsh-settings.example.yaml`](configs/dsh-settings.example.yaml) 到
+`$DSH_HOME/settings.yaml`，并在启动 DSH 的进程中导出
+`RECA_DSH_DEEPSEEK_API_KEY`。示例使用 DSH 的 `llm-pi-ai` OpenAI-compatible
+路由（团队网关支持 `/v1/chat/completions`）；ReCA 内部 planner 仍独立使用
+原有的 Messages adapter。
+
 ## DSH 工具
 
 新接口为 `reca_create_video`、`reca_get_status`、`reca_cancel`、`reca_resume`、`reca_list_runs` 和 `reca_get_artifact`。旧的 `reca_start`、`reca_status` 仍保留兼容。
