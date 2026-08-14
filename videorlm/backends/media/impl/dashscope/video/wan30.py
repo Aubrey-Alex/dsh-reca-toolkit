@@ -234,8 +234,12 @@ def _video_url(value: Any) -> str | None:
 
 
 def _poll(task_id: str) -> dict[str, Any]:
-    deadline = time.monotonic() + float(os.environ.get("RECA_WAN30_TASK_TIMEOUT_S", "3600"))
+    started = time.monotonic()
+    deadline = started + float(os.environ.get("RECA_WAN30_TASK_TIMEOUT_S", "3600"))
     interval = max(0.5, float(os.environ.get("RECA_WAN30_POLL_INTERVAL_S", "5")))
+    log_interval = max(5.0, float(os.environ.get("RECA_WAN30_STATUS_LOG_INTERVAL_S", "30")))
+    last_status = ""
+    last_log = 0.0
     while True:
         try:
             response = _json_request("GET", _url(os.environ.get("RECA_WAN30_STATUS_PATH", _TASK_PATH).format(task_id=task_id)))
@@ -245,9 +249,18 @@ def _poll(task_id: str) -> dict[str, Any]:
             time.sleep(min(interval, 30.0))
             continue
         status = _status(response)
+        now = time.monotonic()
+        if status != last_status or now - last_log >= log_interval:
+            print(
+                f"[wan30] task={task_id} status={status or 'unknown'} "
+                f"elapsed={now - started:.0f}s",
+                flush=True,
+            )
+            last_status = status
+            last_log = now
         if status in _TERMINAL:
             return response
-        if time.monotonic() >= deadline:
+        if now >= deadline:
             raise TimeoutError(f"Wan 3.0 task {task_id} did not finish within timeout")
         time.sleep(interval)
 
