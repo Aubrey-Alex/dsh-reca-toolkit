@@ -26,7 +26,7 @@ bash scripts/start-gateway.sh
 在安装了 DSH 的环境中：
 
 ```bash
-dsh plugin --profile web add "$PWD/dsh-plugin"
+dsh plugin --profile web add "file:$PWD/dsh-plugin"
 dsh web
 ```
 

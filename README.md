@@ -36,7 +36,7 @@ bash scripts/start-gateway.sh
 In another terminal, install the local plugin into the DSH web profile and start DSH:
 
 ```bash
-dsh plugin --profile web add "$PWD/dsh-plugin"
+dsh plugin --profile web add "file:$PWD/dsh-plugin"
 dsh web
 ```
 
