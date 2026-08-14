@@ -1,6 +1,6 @@
 {
   "name": "dsh-reca-toolkit",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "description": "DeepSeek Harness plugin that exposes ReCA Director for long-form video creation.",
   "type": "module",
   "main": "src/index.js",
@@ -22,8 +22,9 @@
     }
   },
   "peerDependencies": {
-    "@deepseek-ai/dsh-skill": "^0.0.1",
-    "@deepseek-ai/dsh-tools": "^0.0.1",
+    "@deepseek-ai/cordis": "^4.0.1",
+    "@deepseek-ai/dsh-skill": "^0.1.0-rc.6",
+    "@deepseek-ai/dsh-tools": "^0.1.0-rc.6",
     "cordis": "^4.0.0-rc.7"
   }
 }
