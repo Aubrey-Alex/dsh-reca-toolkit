@@ -1,9 +1,17 @@
 {
   "name": "dsh-reca-toolkit",
-  "version": "0.1.0",
-  "private": true,
+  "version": "0.2.0",
+  "description": "DeepSeek Harness plugin that exposes ReCA Director for long-form video creation.",
   "type": "module",
   "main": "src/index.js",
+  "exports": {
+    ".": "./src/index.js",
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./package.json": "./package.json"
+  },
+  "files": ["src", "cordis.patch.yml", "README.md"],
+  "license": "MIT",
+  "keywords": ["deepseek-harness", "dsh", "reca", "video-generation", "skill"],
   "dsh": {
     "bundle": {
       "patch": "./cordis.patch.yml"

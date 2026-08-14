@@ -1,0 +1,8 @@
+planner:
+  api_key_env: RECA_PLANNER_API_KEY
+  base_url_env: RECA_PLANNER_BASE_URL
+  model_env: RECA_PLANNER_MODEL
+segment_planner:
+  api_key_env: RECA_SP_API_KEY
+  base_url_env: RECA_SP_BASE_URL
+  model_env: RECA_SP_MODEL

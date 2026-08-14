@@ -1,0 +1,8 @@
+# The distributable DSH patch lives beside the plugin package.
+# Keep this root-level copy for repository tooling and human inspection.
+- insert:
+    - id: reca-toolkit
+      name: dsh-reca-toolkit
+      config:
+        defaultLanguage: zh
+        defaultBackend: wan

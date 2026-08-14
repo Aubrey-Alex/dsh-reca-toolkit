@@ -1,0 +1,12 @@
+enabled_by_default: true
+states:
+  - audit_pending
+  - audit_running
+  - audit_retrying
+  - audit_failed
+  - audit_skipped
+  - audit_repaired
+  - audited
+gpt_api_key_env: RECA_GPT_API_KEY
+gpt_responses_url_env: RECA_GPT_RESPONSES_URL
+gpt_model_env: RECA_GPT_MODEL

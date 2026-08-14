@@ -1,0 +1,3 @@
+image_backend: ${RECA_IMAGE_BACKEND:-wan2.7-image-pro}
+video_backend: ${RECA_WAN30_MODEL:-wan3.0-video}
+wan_base_url: ${RECA_WAN30_BASE_URL:-https://dashscope.aliyuncs.com/api/v1}

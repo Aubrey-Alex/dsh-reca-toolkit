@@ -1613,6 +1613,7 @@ def _validate_and_repair_anchors(
     anchor_urls: dict[str, str],
     asset_pool: dict[str, str],
     params: "ValidatorParams",
+    audit_meta: dict[str, Any] | None = None,
 ) -> dict[str, str]:
     """Per-anchor validate → branch by reason tag → repair → re-validate loop."""
     from videorlm.framework.validator.anchor import (
@@ -1630,6 +1631,9 @@ def _validate_and_repair_anchors(
     repair_root.mkdir(parents=True, exist_ok=True)
 
     out_urls: dict[str, str] = dict(anchor_urls)
+    if audit_meta is not None:
+        audit_meta.setdefault("validator_errors", 0)
+        audit_meta.setdefault("repairs", 0)
 
     # id → {id, name, prompt} for the user-prompt description block.
     # planner.json schemas use lists of dicts; render_plan uses dicts of
@@ -1737,6 +1741,8 @@ def _validate_and_repair_anchors(
                         place_refs=place_refs,
                     )
             except Exception as e:
+                if audit_meta is not None:
+                    audit_meta["validator_errors"] = int(audit_meta.get("validator_errors", 0)) + 1
                 print(
                     f"[validator] {anchor_id} validate ERROR ({type(e).__name__}: {str(e)[:1500]}); "
                     f"accepting current URL",
@@ -1788,6 +1794,8 @@ def _validate_and_repair_anchors(
             validator_image_url = str(repair_path) if repair_path.exists() else new_url
             accepted_url = new_url
             repairs_done += 1
+            if audit_meta is not None:
+                audit_meta["repairs"] = int(audit_meta.get("repairs", 0)) + 1
 
     n_anchors = len(render_plan["boundary_anchors"])
     max_workers = min(4, max(1, n_anchors))
@@ -1802,6 +1810,8 @@ def _validate_and_repair_anchors(
                 if final_url is not None:
                     out_urls[anchor_id] = final_url
             except Exception:
+                if audit_meta is not None:
+                    audit_meta["validator_errors"] = int(audit_meta.get("validator_errors", 0)) + 1
                 pass
     return out_urls
 
@@ -1983,6 +1993,7 @@ def run_render(
     validator: ValidatorParams | None = None,
     segment_validator: SegmentValidatorParams | None = None,
     seed: int | None = None,
+    state_callback: Callable[..., None] | None = None,
 ) -> str:
     """Run the render side end-to-end. Returns final mp4 path.
 
@@ -1991,17 +2002,25 @@ def run_render(
       segment_validator: post-segment VLM validator (validate → router →
         micro_adjust / replan / seed_reroll per segment).
       seed: written into summary.json for reproducibility tracking.
+      state_callback: optional ReCA-owned lifecycle callback. The Gateway may
+        read the resulting state file, but must not derive business stages.
     """
     import time as _time
     timings: dict[str, float] = {}
     out_path = Path(out_path)
 
+    def notify(stage: str, status: str = "running", **extra: Any) -> None:
+        if state_callback is not None:
+            state_callback(stage, status, **extra)
+
     # Single DAG covers portraits / locations / props / anchors.
+    notify("asset_generation", "running")
     print(f"[stage] {'images-dag':20s} START", flush=True)
     t0 = _time.time()
     image_urls = _render_image_dag(render_plan, max_workers=16)
     timings["images_dag"] = _time.time() - t0
     _stage_log("images-dag", t0, n=len(image_urls))
+    notify("asset_generation", "done", asset_count=len(image_urls))
 
     # Split out the views downstream code expects.
     portrait_urls = {pid: image_urls[pid] for pid in render_plan["portrait_plan"] if pid in image_urls}
@@ -2010,14 +2029,26 @@ def run_render(
     anchor_urls = {a["id"]: image_urls[a["id"]] for a in render_plan["boundary_anchors"] if a["id"] in image_urls}
 
     if validator is not None:
+        notify("validating", "running", audit_state="audit_running")
         print(f"[stage] {'anchor-validator':20s} START anchors={len(anchor_urls)}", flush=True)
         t0 = _time.time()
         asset_pool = {**portrait_urls, **location_urls, **prop_urls}
-        anchor_urls = _validate_and_repair_anchors(render_plan, anchor_urls, asset_pool, validator)
+        audit_meta: dict[str, Any] = {}
+        anchor_urls = _validate_and_repair_anchors(
+            render_plan, anchor_urls, asset_pool, validator, audit_meta
+        )
         timings["anchor_validator"] = _time.time() - t0
         _stage_log("anchor-validator", t0, anchors=len(anchor_urls))
+        if audit_meta.get("validator_errors"):
+            anchor_audit_state = "audit_failed"
+        elif audit_meta.get("repairs"):
+            anchor_audit_state = "audit_repaired"
+        else:
+            anchor_audit_state = "audited"
+        notify("validating", "done", audit_state=anchor_audit_state, audit_meta=audit_meta)
 
     # Segments + inline bridge dispatch.
+    notify("rendering", "running", video_state="rendering")
     print(f"[stage] {'segments':20s} START n={len(render_plan.get('segments', {}))}", flush=True)
     t0 = _time.time()
     bridge_executor = ThreadPoolExecutor(max_workers=4)
@@ -2029,6 +2060,8 @@ def run_render(
         )
         timings["segments"] = _time.time() - t0
         _stage_log("segments", t0, n=len(segment_urls), bridges_inflight=len(bridge_futures))
+        if segment_validator is not None:
+            notify("validating", "running", audit_state="audit_running")
 
         # Wait for inline-dispatched bridges to finish.
         print(f"[stage] {'bridges-wait':20s} START n={len(bridge_futures)}", flush=True)
@@ -2043,9 +2076,13 @@ def run_render(
                 raise
         timings["bridges_wait"] = _time.time() - t0
         _stage_log("bridges-wait", t0, n=len(bridge_urls))
+        if segment_validator is not None:
+            notify("validating", "done", audit_state="audited")
+        notify("rendering", "done", video_state="rendered")
     finally:
         bridge_executor.shutdown(wait=True)
 
+    notify("concat", "running")
     print(f"[stage] {'concat':20s} START", flush=True)
     t0 = _time.time()
     final_path = concat_final(
@@ -2061,6 +2098,7 @@ def run_render(
         "bridges":  len(render_plan.get("boundary_policies", [])),
     }
     _emit_summary(out_path, timings, counts, render_plan, final_path, seed=seed)
+    notify("succeeded", "done", video_state="complete")
     return final_path
 
 

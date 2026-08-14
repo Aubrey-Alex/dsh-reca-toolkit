@@ -40,6 +40,8 @@ def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser()
     p.add_argument("--story", default=str(DEFAULT_STORY), help="path to story txt")
     p.add_argument("--out-dir", default=str(DEFAULT_OUT_DIR), help="output dir")
+    p.add_argument("--director-config", default=None,
+                   help="JSON RunConfig written by the ReCA Director Gateway")
     p.add_argument("--label", default="smoke", help="log line prefix tag")
     p.add_argument("--segments", action="store_true", help="run plan_segments_all + to_render_plan")
     p.add_argument("--render", action="store_true", help="run full render after plan (requires --segments)")
@@ -241,6 +243,13 @@ def main() -> None:
         PLANNER_POOL_SIZE,
         PLANNER_ROLE,
     )
+    from videorlm.integrations.director.runtime import (
+        write_artifact_manifest,
+        write_audit_report,
+        write_contact_sheet,
+        write_run_report,
+        write_state,
+    )
 
     def _maybe_validator(planner: dict, story_text: str) -> "ValidatorParams | None":
         if not args.validate:
@@ -393,7 +402,80 @@ def main() -> None:
     story_path = Path(args.story)
     tag = args.label
     out_dir.mkdir(parents=True, exist_ok=True)
+    director_config: dict = {}
+    if args.director_config:
+        try:
+            director_config = json.loads(Path(args.director_config).read_text(encoding="utf-8"))
+        except (OSError, ValueError) as exc:
+            raise SystemExit(f"[{tag}] invalid --director-config: {exc}") from exc
     story = story_path.read_text(encoding="utf-8").strip()
+    planner_story = story
+    constraints = []
+    if director_config.get("duration_s"):
+        constraints.append(f"目标总时长约 {int(director_config['duration_s'])} 秒")
+    if director_config.get("style"):
+        constraints.append(f"整体风格：{director_config['style']}")
+    if director_config.get("aspect_ratio"):
+        constraints.append(f"画幅比例：{director_config['aspect_ratio']}")
+    if constraints:
+        planner_story += "\n\n[ReCA Director 约束]\n" + "；".join(constraints)
+    run_id = str(director_config.get("run_id") or out_dir.name)
+
+    def director_state(stage: str, status: str = "running", **extra: object) -> None:
+        explicit_audit_state = "audit_state" in extra
+        current_state: dict = {}
+        try:
+            current_state = json.loads((out_dir / "run" / "reca_state.json").read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            pass
+        default_audit = current_state.get(
+            "audit_state",
+            "audit_pending" if director_config.get("enable_audit", True) else "audit_skipped",
+        )
+        audit_state = str(extra.pop("audit_state", default_audit))
+        video_state = str(extra.pop("video_state", current_state.get("video_state", "pending")))
+        write_state(
+            out_dir,
+            stage=stage,
+            state="succeeded" if stage == "succeeded" else "running",
+            audit_state=audit_state,
+            video_state=video_state,
+            run_id=run_id,
+            status=status,
+            run_config=director_config,
+            **extra,
+        )
+        if explicit_audit_state or stage in {"succeeded", "failed"}:
+            write_audit_report(
+                out_dir,
+                state=audit_state,
+                details={"stage": stage, "status": status, **extra},
+            )
+        if stage in {"succeeded", "failed"}:
+            write_run_report(out_dir, state=stage, details={"status": status, **extra})
+            # The report itself is an artifact; regenerate the manifest after
+            # writing it so the published list reflects the terminal run.
+            write_artifact_manifest(out_dir, run_id=run_id)
+
+    write_state(out_dir, stage="planning", state="running", run_id=run_id,
+                run_config=director_config, audit_state=("audit_pending" if director_config.get("enable_audit", True) else "audit_skipped"))
+    write_audit_report(
+        out_dir,
+        state=("audit_pending" if director_config.get("enable_audit", True) else "audit_skipped"),
+        details={"stage": "planning"},
+    )
+    write_artifact_manifest(out_dir, run_id=run_id)
+
+    def on_failure(exc_type, exc_value, exc_traceback) -> None:
+        audit_state = "audit_failed" if director_config.get("enable_audit", True) else "audit_skipped"
+        write_state(out_dir, stage="failed", state="failed", run_id=run_id,
+                    audit_state=audit_state, video_state="failed", error=str(exc_value))
+        write_audit_report(out_dir, state=audit_state, details={"error": str(exc_value)})
+        write_run_report(out_dir, state="failed", details={"error": str(exc_value)})
+        write_artifact_manifest(out_dir, run_id=run_id)
+        sys.__excepthook__(exc_type, exc_value, exc_traceback)
+
+    sys.excepthook = on_failure
     print(f"[{tag}] story={story_path.name} ({len(story)} chars), out_dir={out_dir}")
 
     # Snapshot prompt module sources at run start (F9).
@@ -418,14 +500,19 @@ def main() -> None:
                 if (args.validate or args.validate_segments) and (out_dir / "planner.json").exists()
                 else {}
             )
-            vp = _maybe_validator(planner_for_v, story)
-            svp = _maybe_segment_validator(planner_for_v, story)
+            director_state("rendering", "running", video_state="rendering")
+            vp = _maybe_validator(planner_for_v, planner_story)
+            svp = _maybe_segment_validator(planner_for_v, planner_story)
             final_mp4 = run_render(
                 render_plan, out_dir / "run" / "final.mp4",
                 validator=vp,
                 segment_validator=svp,
                 seed=args.seed,
+                state_callback=director_state,
             )
+            write_contact_sheet(out_dir)
+            write_artifact_manifest(out_dir, run_id=run_id)
+            director_state("succeeded", "done", video_state="complete", progress=1.0)
             print(f"[{tag}] run_render OK in {time.time()-t3:.1f}s -> {final_mp4}", flush=True)
         print(f"[{tag}] total wall time: {time.time()-t0:.1f}s", flush=True)
         return
@@ -553,8 +640,9 @@ def main() -> None:
 
     t0 = time.time()
     with parent_agent_ctx as parent:
-        skeleton = plan_skeleton(parent, story)
+        skeleton = plan_skeleton(parent, planner_story)
         (out_dir / "skeleton.json").write_text(json.dumps(skeleton, ensure_ascii=False, indent=2))
+        director_state("planning", "running", shot_count=len(skeleton.get("shots", [])))
         print(f"[{tag}] plan_skeleton OK; shots={len(skeleton['shots'])}", flush=True)
 
         if args.segments:
@@ -566,18 +654,24 @@ def main() -> None:
                 video_resolution=args.video_resolution,
             )
             (out_dir / "render_plan.json").write_text(json.dumps(render_plan, ensure_ascii=False, indent=2))
+            director_state("planning", "done", segment_count=len(segments))
             print(f"[{tag}] plan_segments_all OK; segments={len(segments)}", flush=True)
 
             if args.render:
                 t3 = time.time()
-                vp = _maybe_validator(planner, story)
-                svp = _maybe_segment_validator(planner, story)
+                director_state("rendering", "running", video_state="rendering")
+                vp = _maybe_validator(planner, planner_story)
+                svp = _maybe_segment_validator(planner, planner_story)
                 final_mp4 = run_render(
                     render_plan, out_dir / "run" / "final.mp4",
                     validator=vp,
                     segment_validator=svp,
                     seed=args.seed,
+                    state_callback=director_state,
                 )
+                write_contact_sheet(out_dir)
+                write_artifact_manifest(out_dir, run_id=run_id)
+                director_state("succeeded", "done", video_state="complete", progress=1.0)
                 print(f"[{tag}] run_render OK in {time.time()-t3:.1f}s -> {final_mp4}", flush=True)
 
     print(f"[{tag}] total wall time: {time.time()-t0:.1f}s", flush=True)

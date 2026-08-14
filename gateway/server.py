@@ -62,6 +62,8 @@ class GatewayHandler(BaseHTTPRequestHandler):
         path = unquote(urlparse(self.path).path)
         if path == "/health":
             return self._send_json(HTTPStatus.OK, {"ok": True, "service": "reca-gateway"})
+        if path == "/v1/runs":
+            return self._send_json(HTTPStatus.OK, {"runs": self.manager.list_runs()})
 
         parts = path.strip("/").split("/")
         if len(parts) >= 3 and parts[0:2] == ["v1", "runs"]:
@@ -82,6 +84,11 @@ class GatewayHandler(BaseHTTPRequestHandler):
                 if artifact is None:
                     return self._send_json(HTTPStatus.NOT_FOUND, {"error": "artifact not found"})
                 return self._send_file(artifact)
+            if len(parts) == 4 and parts[3] == "artifacts":
+                status = self.manager.status(run_id)
+                if status is None:
+                    return self._send_json(HTTPStatus.NOT_FOUND, {"error": "run not found"})
+                return self._send_json(HTTPStatus.OK, status.get("artifact_manifest", {}))
         return self._send_json(HTTPStatus.NOT_FOUND, {"error": "route not found"})
 
     def do_POST(self) -> None:
@@ -104,6 +111,14 @@ class GatewayHandler(BaseHTTPRequestHandler):
             if state is None:
                 return self._send_json(HTTPStatus.NOT_FOUND, {"error": "run not found"})
             return self._send_json(HTTPStatus.OK, state)
+        if len(parts) == 4 and parts[:2] == ["v1", "runs"] and parts[3] == "resume":
+            try:
+                state = self.manager.resume(parts[2])
+            except (ValueError, TypeError) as exc:
+                return self._send_json(HTTPStatus.BAD_REQUEST, {"error": str(exc)})
+            if state is None:
+                return self._send_json(HTTPStatus.NOT_FOUND, {"error": "run not found"})
+            return self._send_json(HTTPStatus.ACCEPTED, state)
         return self._send_json(HTTPStatus.NOT_FOUND, {"error": "route not found"})
 
 

@@ -1,0 +1,3 @@
+name: reca-director
+plugin: ./dsh-plugin
+gateway_url: ${RECA_PUBLIC_BASE_URL:-http://127.0.0.1:8787}

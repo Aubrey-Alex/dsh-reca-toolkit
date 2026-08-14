@@ -2,3 +2,6 @@
 - insert:
     - id: reca-toolkit
       name: dsh-reca-toolkit
+      config:
+        defaultLanguage: zh
+        defaultBackend: wan

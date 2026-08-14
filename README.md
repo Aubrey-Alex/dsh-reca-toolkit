@@ -2,12 +2,12 @@
 
 Turn long-form stories into coherent, cinematic videos with consistent characters, scenes, and actions.
 
-This repository bundles the complete ReCA source tree under [`videorlm/`](videorlm/) and adds a thin DeepSeek Harness integration around it. ReCA remains the execution engine: its planner, segment planning, media backends, validators, retry logic, resume behavior, and final concatenation are reused directly.
+This repository packages ReCA as ReCA Director, a long-video creation Skill for DeepSeek Harness. DSH owns conversation and tool calls; ReCA remains the only owner of video planning, rendering, validation, repair, resume decisions, and artifact manifests.
 
 ## Runtime shape
 
 ```text
-DSH Web → dsh-reca plugin → ReCA Gateway → ReCA child process → final.mp4
+DSH Web → ReCA Director Skill → ReCA Gateway → ReCA child process → final.mp4 + audit + manifest
 ```
 
 The gateway exposes asynchronous task lifecycle endpoints:
@@ -17,18 +17,20 @@ POST /v1/runs
 GET  /v1/runs/{run_id}
 GET  /v1/runs/{run_id}/events
 POST /v1/runs/{run_id}/cancel
+POST /v1/runs/{run_id}/resume
+GET  /v1/runs
+GET  /v1/runs/{run_id}/artifacts
 ```
 
-The DSH plugin registers `reca_start`, `reca_status`, and `reca_cancel`. It never receives provider credentials; ReCA reads them from the ignored local `.env` file or the process environment.
+The DSH plugin registers `reca_create_video`, `reca_get_status`, `reca_cancel`, `reca_resume`, `reca_list_runs`, and `reca_get_artifact`. Compatibility aliases `reca_start` and `reca_status` remain available. The plugin never receives provider credentials; ReCA reads them from the ignored local `.env` file or the process environment.
 
 ## Local setup
 
 ```bash
-cp .env.example .env
-# Optional in a fresh environment:
-python3 -m pip install -r requirements.txt
+bash scripts/install.sh
 # Fill the provider values in .env
-python3 -m gateway.server
+bash scripts/doctor.sh
+bash scripts/start-gateway.sh
 ```
 
 In another terminal, install the local plugin into the DSH web profile and start DSH:
@@ -46,8 +48,10 @@ bash scripts/run_demo.sh
 
 The demo submits [`examples/sun_wukong_battle.txt`](examples/sun_wukong_battle.txt) by default, polls the task, and reports the final artifact URL. Set `RECA_DEMO_STORY=examples/story.txt` to use the shorter generic story. Generated files are stored under `.dsh_runs/`, which is ignored by git.
 
-The default run enables the GPT visual anchor validator. ReCA's optional
-segment-level validator can be enabled per DSH call with `validate_segments`.
+The Director request supports `story`, `duration`, `resolution`, `style`,
+`aspect_ratio`, `backend`, `enable_audit`, and `seed`. ReCA emits separate
+Gateway, ReCA, video, and audit states. A generated video may legitimately
+return `audit_skipped` or `audit_failed`.
 
 For a direct ReCA run without DSH, use the bundled entry point:
 
