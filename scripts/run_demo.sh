@@ -11,7 +11,7 @@ if ! curl -fsS "$BASE_URL/health" >/dev/null 2>&1; then
   exit 1
 fi
 
-payload="$(STORY_PATH="$STORY_PATH" python3 -c 'import json, os; from pathlib import Path; p=Path(os.environ["STORY_PATH"]); print(json.dumps({"story": p.read_text(encoding="utf-8"), "options": {"backend": "wan", "resolution": "1280x720", "seed": 0, "validate": True, "validate_segments": False}}))')"
+payload="$(STORY_PATH="$STORY_PATH" python3 -c 'import json, os; from pathlib import Path; p=Path(os.environ["STORY_PATH"]); print(json.dumps({"story": p.read_text(encoding="utf-8"), "options": {"backend": "wan", "resolution": "1280x720", "seed": 0, "validate": True, "validate_segments": True}}))')"
 response="$(curl -fsS -X POST "$BASE_URL/v1/runs" -H 'content-type: application/json' -d "$payload")"
 run_id="$(python3 -c 'import json,sys; print(json.load(sys.stdin)["run_id"])' <<<"$response")"
 echo "Started ReCA run: $run_id"
