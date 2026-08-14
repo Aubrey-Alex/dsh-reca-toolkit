@@ -6,7 +6,7 @@ export function registerCancelRun(ctx, client, name = "reca_cancel") {
     name,
     description: "Cancel an active ReCA Director run.",
     parameters: { run_id: { type: "string", required: true, description: "The ReCA run id." } },
-    output: { schema: { type: "object" }, render: (_args, value) => renderJson(value) },
+    output: { schema: { type: "object", additionalProperties: true }, render: (_args, value) => renderJson(value) },
     async execute(args) {
       return client.cancel(args.run_id);
     },

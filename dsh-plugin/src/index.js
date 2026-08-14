@@ -18,14 +18,14 @@ function registerLegacyStart(ctx, client) {
     description: "Compatibility alias for reca_create_video.",
     parameters: {
       story: { type: "string", required: true },
-      backend: { type: "string", required: false },
-      resolution: { type: "string", required: false },
-      seed: { type: "number", required: false },
-      validate: { type: "boolean", required: false },
-      validate_segments: { type: "boolean", required: false },
-      resume_run_id: { type: "string", required: false },
+      backend: { type: "string" },
+      resolution: { type: "string" },
+      seed: { type: "number" },
+      validate: { type: "boolean" },
+      validate_segments: { type: "boolean" },
+      resume_run_id: { type: "string" },
     },
-    output: { schema: { type: "object" }, render: (_args, value) => renderJson(value) },
+    output: { schema: { type: "object", additionalProperties: true }, render: (_args, value) => renderJson(value) },
     async execute(args) {
       return client.start({
         story: args.story,

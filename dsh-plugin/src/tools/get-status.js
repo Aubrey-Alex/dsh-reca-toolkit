@@ -6,7 +6,7 @@ export function registerGetStatus(ctx, client, name = "reca_get_status") {
     name,
     description: "Query a ReCA Director run, including ReCA stage, audit state, logs, and artifacts.",
     parameters: { run_id: { type: "string", required: true, description: "The ReCA run id." } },
-    output: { schema: { type: "object" }, render: (_args, value) => renderJson(value) },
+    output: { schema: { type: "object", additionalProperties: true }, render: (_args, value) => renderJson(value) },
     async execute(args) {
       return client.status(args.run_id);
     },

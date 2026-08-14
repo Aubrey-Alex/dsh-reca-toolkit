@@ -7,9 +7,9 @@ export function registerGetArtifact(ctx, client) {
     description: "Get the published artifact manifest or a named ReCA artifact URL.",
     parameters: {
       run_id: { type: "string", required: true, description: "The ReCA run id." },
-      path: { type: "string", required: false, description: "Optional manifest path such as run/final.mp4." },
+      path: { type: "string", description: "Optional manifest path such as run/final.mp4." },
     },
-    output: { schema: { type: "object" }, render: (_args, value) => renderJson(value) },
+    output: { schema: { type: "object", additionalProperties: true }, render: (_args, value) => renderJson(value) },
     async execute(args) {
       return client.getArtifact(args.run_id, args.path || "");
     },
