@@ -1,0 +1,566 @@
+{
+  "source": {
+    "input_path": "stage2_gen/ours/input-quick-shot/kitchen_service_rescue_9x6_seed0",
+    "n_shots": 9,
+    "per_shot_duration_s": [
+      6,
+      6,
+      6,
+      6,
+      6,
+      6,
+      6,
+      6,
+      6
+    ],
+    "seed": 0
+  },
+  "portrait_plan": [
+    {
+      "id": "an_qiao",
+      "name": "安乔",
+      "reference_role": "portrait",
+      "negative_prompt": "换脸, 年龄漂移, 性别漂移, 厨师服变色, 变成西装或服务员制服, 手指畸形, 多手指, 血腥, 武器, 打斗姿势, 可读文字, logo, watermark, 变成服务员制服, 变成西装, 断手, 卡通, 动漫, 游戏CG",
+      "prompt": "写实电影感16:9人物定妆照。安乔是年轻主厨，真实自然脸，白色厨师服有清楚衣领、袖口和轻微油烟褶皱，手部自然干净，神情专注但有晚餐高峰压力。背景是开放式餐厅后厨的不锈钢操作台、煎台暖光和出餐口虚化，整体真实可拍。"
+    },
+    {
+      "id": "calm_waiter",
+      "name": "冷静服务员",
+      "reference_role": "supporting_subject",
+      "negative_prompt": "夸张愤怒, 打斗, 奔跑撞人, 服务员变主厨, 制服混乱, 可读文字, logo, watermark, 字幕, 动漫, 游戏CG",
+      "prompt": "写实电影感16:9 配角人物定妆照。冷静服务员穿深色围裙或深色服务制服，站在后厨出餐口附近，侧身看表或看小票，表情有晚餐高峰压力但保持克制。背景有前厅暖光从门缝透入，不要让服务员成为主角。"
+    },
+    {
+      "id": "sous_chef",
+      "name": "副厨",
+      "reference_role": "supporting_subject",
+      "negative_prompt": "抢镜, 厨师服变色, 手部畸形, 打斗, 武器, 血腥, 可读文字, logo, watermark, 多手指, 字幕, 动漫, 游戏CG",
+      "prompt": "写实电影感16:9 配角人物定妆照。副厨穿白色厨师服或浅色围裙，从不锈钢操作台侧面递出干净白盘，动作稳定专业，背景是明亮后厨灯光和金属台面反光。副厨只作为协作角色，不要压过安乔。"
+    }
+  ],
+  "location_plan": {
+    "kitchen_service_rescue": {
+      "id": "open_restaurant_kitchen",
+      "reference_name": "开放式餐厅后厨",
+      "key_zones": [
+        {
+          "id": "wide_kitchen_flow",
+          "name": "后厨动线宽镜",
+          "negative_prompt": "家庭厨房, 空旷无设备, 位置关系混乱, 室外, 黑暗, 可读文字, logo, watermark, 动漫, 游戏CG",
+          "prompt": "写实16:9后厨宽镜参考。左侧煎台和热锅，中间不锈钢操作台，右侧出餐口，前厅暖光从门缝透入；厨师、服务员、副厨位置关系清楚，动线干净明亮。"
+        },
+        {
+          "id": "pan_and_plating_closeups",
+          "name": "热锅和摆盘特写区",
+          "negative_prompt": "食物变糊, 盘子脏污, 手部畸形, 可读文字, 血腥, 火灾, 大量烟雾, 动漫, 游戏CG, logo, watermark",
+          "prompt": "写实16:9厨房特写区参考。不锈钢操作台旁有热锅、白盘、夹子、柠檬片、香草和酱汁小碗；锅边油光和酱汁亮面清楚，适合手部特写和顶视摆盘。"
+        },
+        {
+          "id": "pass_window",
+          "name": "出餐口",
+          "negative_prompt": "黑暗通道, 家庭餐桌, 可读菜单文字, logo, watermark, 人群拥堵, 打斗, 血腥, 动漫, 游戏CG",
+          "prompt": "写实16:9出餐口参考。右侧出餐口有前厅暖光透入，台面干净，服务员可从侧面接过白盘；后厨金属台面和灯光反射形成清晰线条。"
+        }
+      ],
+      "props": {
+        "lemon_sea_fish": {
+          "name": "柠檬海鱼",
+          "owner": "an_qiao",
+          "negative_prompt": "肉排, 甜点, 糊黑, 生鱼片, 食物消失, 盘面脏乱, 血腥",
+          "prompt": "白色鱼排带轻微煎色，柠檬片、香草和亮面酱汁是核心视觉；不能变成肉排、甜点或糊掉的食物。"
+        },
+        "white_plate": {
+          "name": "干净白盘",
+          "owner": "sous_chef",
+          "negative_prompt": "黑盘, 纸盘, 脏盘, 破盘, 盘子消失, 多个主盘混乱",
+          "prompt": "干净圆形白盘，盘边最后需要被擦净，承载柠檬海鱼出餐；不能变成黑盘、纸盘或脏盘。"
+        },
+        "tongs_and_towel": {
+          "name": "夹子和擦盘布",
+          "owner": "an_qiao",
+          "negative_prompt": "刀具攻击, 武器化, 手部畸形, 道具消失, 毛巾变成餐巾纸",
+          "prompt": "金属夹子用于稳定转移鱼排，小白布用于擦掉盘边一滴酱汁；都是专业厨房动作的关键道具。"
+        }
+      }
+    }
+  },
+  "boundarys": {
+    "boundary_anchors": [
+      {
+        "id": "a00_kitchen_flow_start",
+        "reference_inputs": {
+          "portrait": "安乔",
+          "place": "开放式餐厅后厨"
+        },
+        "negative_prompt": "家庭厨房, 黑暗, 空间关系混乱, 安乔换脸, 厨师服变色, 食物消失, 可读文字, 字幕, logo, watermark",
+        "prompt": "写实16:9起始关键帧，后厨宽镜。左侧煎台、右侧出餐口、中间不锈钢操作台位置清楚；安乔穿白色厨师服站在操作台旁准备补救柠檬海鱼，服务员在出餐口附近等待，后厨灯光明亮，台面反射清晰。"
+      },
+      {
+        "id": "a01_fish_back_to_pan",
+        "reference_inputs": {
+          "portrait": "安乔",
+          "place": "开放式餐厅后厨"
+        },
+        "negative_prompt": "手指畸形, 多手指, 鱼排变肉排, 食物糊黑, 火焰失控, 血腥, 可读文字, logo, watermark",
+        "prompt": "写实16:9手部特写关键帧。安乔用夹子把柠檬海鱼重新放回热锅，鱼排带轻微煎色，锅边油光轻跳，白色厨师服袖口和自然手部可见，背景是不锈钢操作台虚化。"
+      },
+      {
+        "id": "a02_waiter_reaction",
+        "reference_inputs": {
+          "portrait": "冷静服务员",
+          "place": "开放式餐厅后厨"
+        },
+        "negative_prompt": "服务员大喊, 打斗, 奔跑撞人, 安乔消失, 可读文字, 字幕, logo, watermark, 动漫",
+        "prompt": "写实16:9反应近景关键帧。服务员站在出餐口侧边，看表或看小票但保持冷静，前厅暖光从门缝透入；背景能看到安乔在后厨继续操作，氛围紧张但没有争吵。"
+      },
+      {
+        "id": "a03_overhead_plating",
+        "reference_inputs": {
+          "portrait": "安乔",
+          "place": "开放式餐厅后厨"
+        },
+        "negative_prompt": "手部畸形, 盘面脏乱, 食物消失, 可读文字, logo, watermark, 俯拍变侧拍, 动漫, 游戏CG",
+        "prompt": "写实16:9顶视摆盘关键帧。不锈钢台面上白盘、柠檬片、香草和酱汁按顺序摆好，安乔双手在画面边缘稳定操作，盘面干净，构图清楚，像真实餐厅出餐流程。"
+      },
+      {
+        "id": "a04_sauce_glaze",
+        "reference_inputs": {
+          "place": "开放式餐厅后厨"
+        },
+        "negative_prompt": "火灾, 大量烟雾, 酱汁糊黑, 食物变形, 血腥, 低清晰度, logo, watermark",
+        "prompt": "写实16:9锅边特写关键帧。热锅边缘和鱼排旁的酱汁在高温下收紧成亮面，油光和蒸汽细微可见，背景保持后厨不锈钢反射，不要夸张火焰。"
+      },
+      {
+        "id": "a05_plate_handoff",
+        "reference_inputs": {
+          "portrait": "安乔",
+          "place": "开放式餐厅后厨"
+        },
+        "negative_prompt": "手部畸形, 盘子变黑, 鱼排掉落, 食物消失, 副厨抢主角, 打斗, 可读文字, logo, watermark",
+        "prompt": "写实16:9中景关键帧。副厨从侧面递来干净白盘，安乔用金属夹子稳稳转移柠檬海鱼，白色厨师服、白盘和不锈钢台面反光清楚，动作专业稳定。"
+      },
+      {
+        "id": "a06_pass_window_ready",
+        "reference_inputs": {
+          "portrait": "冷静服务员",
+          "place": "开放式餐厅后厨"
+        },
+        "negative_prompt": "出餐口消失, 前厅变黑, 服务员换脸, 人群堵住通道, 可读文字, 字幕, logo, watermark",
+        "prompt": "写实16:9出餐口宽镜关键帧。服务员在右侧出餐口让出位置，前厅暖光透入，安乔和白盘在后厨操作台附近，动线清楚，后厨灯光和不锈钢台面形成清晰反射线条。"
+      },
+      {
+        "id": "a07_final_garnish",
+        "reference_inputs": {
+          "portrait": "安乔",
+          "place": "开放式餐厅后厨"
+        },
+        "negative_prompt": "手部畸形, 盘边脏乱, 香草消失, 鱼排变形, 可读文字, logo, watermark, 动漫, 游戏CG",
+        "prompt": "写实16:9近景关键帧。安乔用小白布擦掉白盘边缘一滴酱汁，再放上最后一片香草；柠檬海鱼、亮面酱汁、白盘和自然手部清楚可见，动作精确克制。"
+      },
+      {
+        "id": "a08_service_pickup",
+        "reference_inputs": {
+          "portrait": "冷静服务员",
+          "place": "开放式餐厅后厨"
+        },
+        "negative_prompt": "白盘消失, 服务员打翻盘子, 安乔换脸, 食物变形, 黑暗后厨, 可读文字, 字幕, logo, watermark",
+        "prompt": "写实16:9稳定中景关键帧。白盘被推到出餐口，服务员端起柠檬海鱼离开，安乔在后方松一口气；后厨灯光明亮，不锈钢台面反射成清晰线条，出餐结果明确。"
+      },
+      {
+        "id": "a09_an_qiao_relief",
+        "reference_inputs": {
+          "portrait": "安乔",
+          "place": "开放式餐厅后厨"
+        },
+        "negative_prompt": "安乔换脸, 厨师服变色, 白盘仍停在台上, 食物掉落, 黑暗后厨, 打斗, 血腥, 可读文字, 字幕, logo, watermark",
+        "prompt": "写实16:9最终稳定中景关键帧。服务员已经端着白盘离开出餐口，安乔站在不锈钢操作台后方短暂松一口气，仍穿白色厨师服，神情从紧张转为克制放松。后厨灯光明亮，台面反射清晰，煎台和出餐口位置仍然稳定。"
+      }
+    ]
+  },
+  "shots": [
+    {
+      "id": "shot00_kitchen_flow",
+      "duration_s": 6,
+      "segment_ids": [
+        "seg00_kitchen_flow"
+      ],
+      "location": "开放式餐厅后厨宽镜",
+      "characters": [
+        "安乔",
+        "冷静服务员",
+        "副厨"
+      ],
+      "props": [
+        "柠檬海鱼",
+        "干净白盘",
+        "夹子和擦盘布"
+      ],
+      "story_goal": "建立周五晚餐高峰的开放式后厨动线，安乔开始补救柠檬海鱼出餐。",
+      "start_state": "安乔站在不锈钢操作台旁准备补救柠檬海鱼，服务员在出餐口附近等待。",
+      "end_state": "镜头靠近热锅和鱼排回锅状态，后厨空间关系仍然清楚。",
+      "visual_intent": "用宽镜稳定左侧煎台、中间操作台、右侧出餐口和前厅暖光，表现忙碌但有秩序的真实后厨。"
+    },
+    {
+      "id": "shot01_fish_back_to_pan",
+      "duration_s": 6,
+      "segment_ids": [
+        "seg01_fish_back_to_pan"
+      ],
+      "location": "煎台和热锅特写区",
+      "characters": [
+        "安乔"
+      ],
+      "props": [
+        "柠檬海鱼",
+        "夹子和擦盘布"
+      ],
+      "story_goal": "安乔用夹子稳定处理柠檬海鱼，把补救动作从宽镜推进到手部特写。",
+      "start_state": "安乔用夹子把柠檬海鱼重新放回热锅，锅边油光和少量蒸汽可见。",
+      "end_state": "鱼排保持完整和轻微煎色，画面注意力自然带向出餐口服务员的等待反应。",
+      "visual_intent": "强调真实厨房手部操作、油光、蒸汽和鱼排质感，不要危险火焰、糊黑食物或炫技料理表演。"
+    },
+    {
+      "id": "shot02_waiter_reaction",
+      "duration_s": 6,
+      "segment_ids": [
+        "seg02_waiter_reaction"
+      ],
+      "location": "出餐口侧边",
+      "characters": [
+        "冷静服务员",
+        "安乔"
+      ],
+      "props": [
+        "小票或手表",
+        "柠檬海鱼"
+      ],
+      "story_goal": "服务员在出餐口等待并传达时间压力，安乔仍在背景继续补救。",
+      "start_state": "服务员站在出餐口侧边，看表或看小票但保持礼貌克制。",
+      "end_state": "镜头自然转向不锈钢操作台上的白盘、柠檬片、香草和酱汁。",
+      "visual_intent": "紧张来自等待、灯光和人物眼神，不是争吵、奔跑或冲撞。"
+    },
+    {
+      "id": "shot03_overhead_plating",
+      "duration_s": 6,
+      "segment_ids": [
+        "seg03_overhead_plating"
+      ],
+      "location": "不锈钢操作台顶视摆盘区",
+      "characters": [
+        "安乔"
+      ],
+      "props": [
+        "干净白盘",
+        "柠檬海鱼",
+        "柠檬片",
+        "香草",
+        "亮面酱汁"
+      ],
+      "story_goal": "安乔进入摆盘流程，白盘、柠檬片、香草和酱汁形成清楚出餐结构。",
+      "start_state": "白盘、柠檬片、香草和酱汁按顺序摆在不锈钢台面上，安乔双手从画面边缘稳定操作。",
+      "end_state": "视觉焦点转向锅边酱汁亮面和鱼排状态，准备完成最后火候调整。",
+      "visual_intent": "保持俯视或高位视角清楚、台面反光真实、盘面干净，不要变成广告慢动作或混乱侧拍。"
+    },
+    {
+      "id": "shot04_sauce_glaze",
+      "duration_s": 6,
+      "segment_ids": [
+        "seg04_sauce_glaze"
+      ],
+      "location": "锅边酱汁特写区",
+      "characters": [
+        "安乔",
+        "副厨"
+      ],
+      "props": [
+        "柠檬海鱼",
+        "亮面酱汁",
+        "干净白盘"
+      ],
+      "story_goal": "通过锅边酱汁收紧和鱼排完整状态说明补救成功，并准备转移到白盘。",
+      "start_state": "热锅边缘和鱼排旁的酱汁收紧成亮面，油光和细微蒸汽可见。",
+      "end_state": "副厨递来干净白盘，安乔准备把鱼排稳定转移。",
+      "visual_intent": "火候真实可控，重点是微小质感和专业补救成功，不要火灾、大量浓烟或食物糊黑。"
+    },
+    {
+      "id": "shot05_plate_handoff",
+      "duration_s": 6,
+      "segment_ids": [
+        "seg05_plate_handoff"
+      ],
+      "location": "操作台到出餐口动线",
+      "characters": [
+        "安乔",
+        "副厨",
+        "冷静服务员"
+      ],
+      "props": [
+        "柠檬海鱼",
+        "干净白盘",
+        "金属夹子"
+      ],
+      "story_goal": "副厨递盘，安乔把柠檬海鱼稳定转移到白盘，出餐动线开始形成。",
+      "start_state": "副厨从侧面递来干净白盘，安乔用金属夹子准备转移鱼排。",
+      "end_state": "白盘和柠檬海鱼接近出餐口方向，服务员让出位置准备接盘。",
+      "visual_intent": "表现专业团队的安静配合，副厨不抢主角，盘子、鱼排、手部和金属台面反光都要清楚。"
+    },
+    {
+      "id": "shot06_pass_window_ready",
+      "duration_s": 6,
+      "segment_ids": [
+        "seg06_pass_window_ready"
+      ],
+      "location": "右侧出餐口",
+      "characters": [
+        "安乔",
+        "冷静服务员"
+      ],
+      "props": [
+        "柠檬海鱼",
+        "白盘",
+        "香草"
+      ],
+      "story_goal": "白盘进入出餐口动线，服务员让位，安乔完成最后装饰前的准备。",
+      "start_state": "右侧出餐口有前厅暖光，服务员主动让出位置并准备接盘。",
+      "end_state": "镜头推进到白盘边缘、柠檬海鱼和最后香草整理的近景。",
+      "visual_intent": "左侧煎台、中间操作台、右侧出餐口关系不能乱，氛围紧张但秩序稳定。"
+    },
+    {
+      "id": "shot07_final_garnish",
+      "duration_s": 6,
+      "segment_ids": [
+        "seg07_final_garnish"
+      ],
+      "location": "出餐前白盘近景",
+      "characters": [
+        "安乔",
+        "冷静服务员"
+      ],
+      "props": [
+        "柠檬海鱼",
+        "干净白盘",
+        "香草",
+        "小白布"
+      ],
+      "story_goal": "安乔擦净盘边并放上最后香草，完成柠檬海鱼出餐细节。",
+      "start_state": "安乔用小白布擦掉白盘边缘一滴酱汁，并准备放上最后一片绿色香草。",
+      "end_state": "盘子处于可被服务员端走的位置，柠檬海鱼、亮面酱汁和白盘边缘清楚干净。",
+      "visual_intent": "动作精确克制，表现专业补救完成，不做夸张料理表演。"
+    },
+    {
+      "id": "shot08_service_pickup",
+      "duration_s": 6,
+      "segment_ids": [
+        "seg08_service_pickup"
+      ],
+      "location": "出餐口到后厨收束",
+      "characters": [
+        "安乔",
+        "冷静服务员"
+      ],
+      "props": [
+        "柠檬海鱼",
+        "干净白盘"
+      ],
+      "story_goal": "服务员端走完成的柠檬海鱼，安乔在后方短暂松一口气，完成情绪收束。",
+      "start_state": "白盘被推到出餐口，服务员端起柠檬海鱼离开。",
+      "end_state": "服务员已经端着白盘离开出餐口，安乔站在操作台后方短暂放松但仍保持主厨克制。",
+      "visual_intent": "明确出餐成功和情绪释放，后厨仍明亮干净，不变成庆祝、争吵或黑暗混乱场面。"
+    }
+  ],
+  "transitions": [
+    {
+      "id": "tr00_shot00_kitchen_flow_to_shot01_fish_back_to_pan",
+      "from_shot": "shot00_kitchen_flow",
+      "to_shot": "shot01_fish_back_to_pan",
+      "mode": "cut"
+    },
+    {
+      "id": "tr01_shot01_fish_back_to_pan_to_shot02_waiter_reaction",
+      "from_shot": "shot01_fish_back_to_pan",
+      "to_shot": "shot02_waiter_reaction",
+      "mode": "cut"
+    },
+    {
+      "id": "tr02_shot02_waiter_reaction_to_shot03_overhead_plating",
+      "from_shot": "shot02_waiter_reaction",
+      "to_shot": "shot03_overhead_plating",
+      "mode": "cut"
+    },
+    {
+      "id": "tr03_shot03_overhead_plating_to_shot04_sauce_glaze",
+      "from_shot": "shot03_overhead_plating",
+      "to_shot": "shot04_sauce_glaze",
+      "mode": "cut"
+    },
+    {
+      "id": "tr04_shot04_sauce_glaze_to_shot05_plate_handoff",
+      "from_shot": "shot04_sauce_glaze",
+      "to_shot": "shot05_plate_handoff",
+      "mode": "cut"
+    },
+    {
+      "id": "tr05_shot05_plate_handoff_to_shot06_pass_window_ready",
+      "from_shot": "shot05_plate_handoff",
+      "to_shot": "shot06_pass_window_ready",
+      "mode": "cut"
+    },
+    {
+      "id": "tr06_shot06_pass_window_ready_to_shot07_final_garnish",
+      "from_shot": "shot06_pass_window_ready",
+      "to_shot": "shot07_final_garnish",
+      "mode": "cut"
+    },
+    {
+      "id": "tr07_shot07_final_garnish_to_shot08_service_pickup",
+      "from_shot": "shot07_final_garnish",
+      "to_shot": "shot08_service_pickup",
+      "mode": "cut"
+    }
+  ],
+  "segments": {
+    "seg00_kitchen_flow": {
+      "id": "seg00_kitchen_flow",
+      "shot_id": "shot00_kitchen_flow",
+      "segment_index_in_shot": 0,
+      "segment_count_in_shot": 1,
+      "duration_s": 6,
+      "first_frame_path": "shot_start_anchor",
+      "input_frame_policy": "use_shot_start_anchor",
+      "reference_inputs": {
+        "portrait": "安乔",
+        "place": "开放式餐厅后厨"
+      },
+      "start_anchor": "a00_kitchen_flow_start",
+      "negative_prompt": "家庭厨房, 黑暗厨房, 打斗, 血腥, 火灾, 空间关系混乱, 厨师服变色, 安乔换脸, 可读文字, 字幕, logo, watermark, 动漫, 游戏CG",
+      "prompt": "写实电影感16:9后厨连续段落，承接 a00_kitchen_flow_start 的宽镜。画面首先要建立开放式餐厅后厨的空间关系：左侧煎台和热锅，中间不锈钢操作台，右侧出餐口与前厅暖光。安乔穿白色厨师服，脸和衣服与 portrait 一致，站在操作台旁准备补救柠檬海鱼；冷静服务员在出餐口附近等待，副厨在背景保持协作位置。镜头是轻微手持中景，强调晚餐高峰的压力、金属台面反光和专业秩序。结尾自然靠近鱼排回锅的手部特写状态。"
+    },
+    "seg01_fish_back_to_pan": {
+      "id": "seg01_fish_back_to_pan",
+      "shot_id": "shot01_fish_back_to_pan",
+      "segment_index_in_shot": 0,
+      "segment_count_in_shot": 1,
+      "duration_s": 6,
+      "first_frame_path": "shot_start_anchor",
+      "input_frame_policy": "use_shot_start_anchor",
+      "reference_inputs": {
+        "portrait": "安乔",
+        "place": "开放式餐厅后厨"
+      },
+      "start_anchor": "a01_fish_back_to_pan",
+      "negative_prompt": "手指畸形, 多手指, 鱼排变肉排, 食物糊黑, 火焰失控, 血腥, 打斗, 可读文字, 字幕, logo, watermark",
+      "prompt": "写实电影感16:9厨房手部特写段落，承接鱼排回锅关键帧。参考 portrait 保持安乔的白色厨师服袖口、自然手部和克制专注气质，参考 place 保持煎台、不锈钢台面、热锅与暖色后厨灯光。安乔用金属夹子稳稳处理柠檬海鱼，鱼排保持白色鱼肉和轻微煎色，锅边油光和少量蒸汽可见。画面重点是专业补救而不是炫技，不能出现危险火焰、糊黑食物、畸形手或打斗感；结尾可以把注意力带向出餐口服务员反应。"
+    },
+    "seg02_waiter_reaction": {
+      "id": "seg02_waiter_reaction",
+      "shot_id": "shot02_waiter_reaction",
+      "segment_index_in_shot": 0,
+      "segment_count_in_shot": 1,
+      "duration_s": 6,
+      "first_frame_path": "shot_start_anchor",
+      "input_frame_policy": "use_shot_start_anchor",
+      "reference_inputs": {
+        "portrait": "冷静服务员",
+        "place": "开放式餐厅后厨"
+      },
+      "start_anchor": "a02_waiter_reaction",
+      "negative_prompt": "服务员大喊, 打斗, 奔跑撞人, 服务员变主厨, 前厅消失, 可读文字, 字幕, logo, watermark, 动漫, 游戏CG",
+      "prompt": "写实电影感16:9后厨反应段落，承接服务员在出餐口侧边等待的状态。服务员穿深色围裙或服务制服，表情有时间压力但礼貌克制，可看表或看小票；前厅暖光从出餐口门缝透入，背景中安乔仍在操作台旁继续补救。镜头用中近景保持服务员与后厨空间的关系，不让服务员变成主厨，也不让场面变成争吵。餐厅高峰的紧张来自等待、灯光、锅声和人物眼神，而不是奔跑撞人。结尾自然转向摆盘台面。"
+    },
+    "seg03_overhead_plating": {
+      "id": "seg03_overhead_plating",
+      "shot_id": "shot03_overhead_plating",
+      "segment_index_in_shot": 0,
+      "segment_count_in_shot": 1,
+      "duration_s": 6,
+      "first_frame_path": "shot_start_anchor",
+      "input_frame_policy": "use_shot_start_anchor",
+      "reference_inputs": {
+        "portrait": "安乔",
+        "place": "开放式餐厅后厨"
+      },
+      "start_anchor": "a03_overhead_plating",
+      "negative_prompt": "手部畸形, 盘面脏乱, 食物消失, 俯拍变侧拍, 可读文字, 字幕, logo, watermark, 动漫, 游戏CG",
+      "prompt": "写实电影感16:9顶视摆盘段落，承接不锈钢操作台上的白盘、柠檬片、香草和酱汁。构图保持清楚的俯视或高位视角，安乔的双手从画面边缘进入，动作稳定、准确、干净；白色鱼排、亮面酱汁、柠檬片和香草都要保持可辨认。台面反光真实，盘边干净，不要变成广告式夸张慢动作，也不要让俯视角跳成混乱侧拍。结尾把视觉焦点带到锅边酱汁亮面和鱼排状态。"
+    },
+    "seg04_sauce_glaze": {
+      "id": "seg04_sauce_glaze",
+      "shot_id": "shot04_sauce_glaze",
+      "segment_index_in_shot": 0,
+      "segment_count_in_shot": 1,
+      "duration_s": 6,
+      "first_frame_path": "shot_start_anchor",
+      "input_frame_policy": "use_shot_start_anchor",
+      "reference_inputs": {
+        "place": "开放式餐厅后厨"
+      },
+      "start_anchor": "a04_sauce_glaze",
+      "negative_prompt": "火灾, 大量烟雾, 酱汁糊黑, 食物变形, 食物消失, 血腥, 低清晰度, 可读文字, logo, watermark",
+      "prompt": "写实电影感16:9锅边特写段落，承接酱汁收紧的关键帧。画面保持热锅边缘、鱼排、亮面酱汁、细微蒸汽和不锈钢台面反光，火候真实可控；可以看到油光轻微跳动，但不能出现火灾、大量浓烟或食物糊黑。这个段落的重点是通过微小质感说明补救成功：鱼排完整、酱汁有光泽、环境仍是明亮专业后厨。结尾自然转向副厨递来干净白盘、安乔准备转移鱼排的中景。"
+    },
+    "seg05_plate_handoff": {
+      "id": "seg05_plate_handoff",
+      "shot_id": "shot05_plate_handoff",
+      "segment_index_in_shot": 0,
+      "segment_count_in_shot": 1,
+      "duration_s": 6,
+      "first_frame_path": "shot_start_anchor",
+      "input_frame_policy": "use_shot_start_anchor",
+      "reference_inputs": {
+        "portrait": "安乔",
+        "place": "开放式餐厅后厨"
+      },
+      "start_anchor": "a05_plate_handoff",
+      "negative_prompt": "手部畸形, 盘子变黑, 鱼排掉落, 食物消失, 副厨抢主角, 打斗, 可读文字, 字幕, logo, watermark",
+      "prompt": "写实电影感16:9后厨协作段落，承接副厨递来白盘、安乔准备转移鱼排的状态。副厨只作为侧面协作角色，递盘动作稳定不过分抢镜；安乔用金属夹子把柠檬海鱼转移到干净白盘，白色厨师服、自然手部、白盘边缘和不锈钢台面反光都要清楚。镜头保持中景或中近景，表现专业团队的安静配合，不出现掉盘、抢镜、打斗或食物消失。结尾让白盘接近出餐口方向，空间动线清晰。"
+    },
+    "seg06_pass_window_ready": {
+      "id": "seg06_pass_window_ready",
+      "shot_id": "shot06_pass_window_ready",
+      "segment_index_in_shot": 0,
+      "segment_count_in_shot": 1,
+      "duration_s": 6,
+      "first_frame_path": "shot_start_anchor",
+      "input_frame_policy": "use_shot_start_anchor",
+      "reference_inputs": {
+        "portrait": "冷静服务员",
+        "place": "开放式餐厅后厨"
+      },
+      "start_anchor": "a06_pass_window_ready",
+      "negative_prompt": "出餐口消失, 前厅变黑, 服务员换脸, 人群堵住通道, 打斗, 可读文字, 字幕, logo, watermark",
+      "prompt": "写实电影感16:9出餐口段落，承接白盘进入出餐口动线。右侧出餐口有前厅暖光，服务员主动让出位置并准备接盘；安乔在操作台附近保持专注，白盘和柠檬海鱼仍是核心视觉。后厨灯光明亮，金属台面形成清晰反射线条，左侧煎台、中间操作台、右侧出餐口的关系不能乱。氛围是紧张但秩序稳定，不要让前厅变黑、服务员换脸或通道被人群堵住。结尾自然推进到最后擦盘和加香草的近景。"
+    },
+    "seg07_final_garnish": {
+      "id": "seg07_final_garnish",
+      "shot_id": "shot07_final_garnish",
+      "segment_index_in_shot": 0,
+      "segment_count_in_shot": 1,
+      "duration_s": 6,
+      "first_frame_path": "shot_start_anchor",
+      "input_frame_policy": "use_shot_start_anchor",
+      "reference_inputs": {
+        "portrait": "安乔",
+        "place": "开放式餐厅后厨"
+      },
+      "start_anchor": "a07_final_garnish",
+      "negative_prompt": "手部畸形, 盘边脏乱, 香草消失, 鱼排变形, 食物消失, 可读文字, 字幕, logo, watermark, 动漫, 游戏CG",
+      "prompt": "写实电影感16:9出餐细节段落，承接安乔完成最后整理的近景。画面聚焦白盘边缘、柠檬海鱼、亮面酱汁、香草和安乔自然手部；她用小白布擦净盘边一滴酱汁，并放上最后的绿色香草。动作精确克制，表现专业补救完成，而不是夸张料理表演。白色盘子、鱼排质感、酱汁光泽和后厨暖光都要稳定，不出现手指畸形、盘边脏乱或食物变形。结尾让盘子处于可被服务员端走的位置。"
+    },
+    "seg08_service_pickup": {
+      "id": "seg08_service_pickup",
+      "shot_id": "shot08_service_pickup",
+      "segment_index_in_shot": 0,
+      "segment_count_in_shot": 1,
+      "duration_s": 6,
+      "first_frame_path": "shot_start_anchor",
+      "input_frame_policy": "use_shot_start_anchor",
+      "reference_inputs": {
+        "portrait": "安乔",
+        "place": "开放式餐厅后厨"
+      },
+      "start_anchor": "a08_service_pickup",
+      "negative_prompt": "白盘消失, 服务员打翻盘子, 安乔换脸, 食物变形, 黑暗后厨, 打斗, 可读文字, 字幕, logo, watermark",
+      "prompt": "写实电影感16:9稳定收束段落，承接服务员在出餐口接盘的状态。白盘被推到出餐口，服务员端起柠檬海鱼离开，动作专业平稳；安乔在后方短暂松一口气，但仍保持主厨的克制和站姿。后厨空间保持明亮干净，煎台、操作台和出餐口位置清楚，不锈钢台面反射形成连续线条。这个段落要明确出餐成功和情绪释放，但不要变成庆祝、争吵或黑暗混乱场面。"
+    }
+  }
+}

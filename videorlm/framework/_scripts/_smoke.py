@@ -1,0 +1,587 @@
+"""Quick end-to-end smoke test for the framework.
+
+Defaults
+--------
+- Agent: gpt-5.5 via OpenAI-compatible endpoint (OPENAI_BASE_URL/OPENAI_API_KEY
+  in pipeline/.env). QwenAgent class is reused — it's a generic OpenAI
+  client + base_url override.
+- Render image kinds (portrait / anchor_image / image_edit): gpt-image-2-pro.
+- Render video segment_r2v: happyhorse-1.0-r2v.
+
+Usage
+-----
+    cd /mnt/workspace/akide/code/unirlm-02
+    python3 -m videorlm.framework._scripts._smoke
+    python3 -m videorlm.framework._scripts._smoke --segments --render
+    python3 -m videorlm.framework._scripts._smoke --segments --render --validate
+    python3 -m videorlm.framework._scripts._smoke --seed 42 --segments --render
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import sys
+import time
+from pathlib import Path
+
+
+# This file lives at <repo>/videorlm/framework/_scripts/_smoke.py
+# parents[0] = _scripts/, [1] = framework/, [2] = videorlm/, [3] = repo root.
+REPO = Path(__file__).resolve().parents[3]
+ENV = REPO / ".env"
+CONFIGS_DIR = REPO / "videorlm" / "configs"
+OUTPUTS_DIR = REPO / "videorlm" / "outputs" / "version_2.2"
+DEFAULT_STORY = REPO / "input_examples" / "example_01.txt"
+DEFAULT_OUT_DIR = OUTPUTS_DIR / "ex01"
+
+
+def parse_args() -> argparse.Namespace:
+    p = argparse.ArgumentParser()
+    p.add_argument("--story", default=str(DEFAULT_STORY), help="path to story txt")
+    p.add_argument("--out-dir", default=str(DEFAULT_OUT_DIR), help="output dir")
+    p.add_argument("--label", default="smoke", help="log line prefix tag")
+    p.add_argument("--segments", action="store_true", help="run plan_segments_all + to_render_plan")
+    p.add_argument("--render", action="store_true", help="run full render after plan (requires --segments)")
+    p.add_argument("--resume", action="store_true",
+                   help="if render_plan.json exists in out_dir, skip plan + run render only")
+    p.add_argument("--validate", action="store_true",
+                   help="enable anchor validator+repair pass between i2i and R2V")
+    p.add_argument("--validate-segments", action="store_true",
+                   help="enable segment-level VLM validator + repair after each "
+                        "segment render (validate → router → micro_adjust / replan). "
+                        "Uses qwen3.6-plus router + qwen3.6-max-preview for repairs.")
+    p.add_argument("--max-repair-attempts", type=int, default=2,
+                   help="max repair attempts per anchor AND per segment")
+    # ── segment verification 旋钮(全部可选;不传 = 保持历史行为) ──────────
+    p.add_argument("--segment-axis-threshold", type=float, default=None,
+                   metavar="F",
+                   help="per-axis pass threshold for the segment validator "
+                        "(default 0.6, env RECA_SEGMENT_AXIS_THRESHOLD)")
+    p.add_argument("--segment-overall-threshold", type=float, default=None,
+                   metavar="F",
+                   help="overall pass threshold for the segment validator "
+                        "(default 0.7, env RECA_SEGMENT_OVERALL_THRESHOLD)")
+    p.add_argument("--segment-validator-model", default=None, metavar="NAME",
+                   help="vision model used to judge segments "
+                        "(default qwen3-vl-plus, env RECA_SEGMENT_VALIDATOR_MODEL)")
+    p.add_argument("--segment-validator-fps", type=int, default=None, metavar="N",
+                   help="server-side frame sampling rate of the judged video, 1-10 "
+                        "(default 10, env RECA_SEGMENT_VALIDATOR_FPS)")
+    p.add_argument("--segment-repair-strategies", default=None, metavar="CSV",
+                   help="comma-separated subset of seed_reroll,micro_adjust,replan the "
+                        "router may pick; anything else is downgraded to the first one. "
+                        "Pass an empty string for validate-only (score + log, never "
+                        "re-render). Default: all three. "
+                        "env RECA_SEGMENT_REPAIR_STRATEGIES")
+    p.add_argument("--no-segment-best-of-n", action="store_true",
+                   help="do not snapshot/restore the highest-scoring attempt; always "
+                        "keep the last render (env RECA_SEGMENT_BEST_OF_N=0)")
+    p.add_argument("--segment-validator-on-error", choices=["raise", "accept"],
+                   default=None,
+                   help="what to do when the validator CALL fails (API/parse error, "
+                        "NOT a fail verdict): raise = fail the shot chain (default), "
+                        "accept = keep the current render and move on. "
+                        "env RECA_SEGMENT_VALIDATOR_ON_ERROR")
+    p.add_argument("--seed", type=int, default=0,
+                   help="render plan seed; written into summary.json so the run is "
+                        "reproducible (default 0)")
+    p.add_argument("--backend", choices=["wan", "happyhorse", "ltx"],
+                   default="happyhorse",
+                   help="video backend branch: wan / happyhorse / ltx")
+    p.add_argument("--force-i2v", action="store_true",
+                   help="force every segment to use the i2v backend mode (drops extra refs)")
+    p.add_argument("--video-resolution", default="1920x1080",
+                   help="render plan video_resolution. happyhorse supports 1280x720 + "
+                        "1920x1080; wan2.7 supports 1280x720 only — use 1280x720 when "
+                        "--backend wan or render will raise BackendRenderError. "
+                        "ltx-2.3 advertises 1280x720 / 1920x1080 but generates at the "
+                        "nearest 64-aligned height (704/1088) and ffmpeg-pads/crops "
+                        "back to exact target so concat stays clean.")
+    return p.parse_args()
+
+
+def load_env() -> None:
+    file_values: dict[str, str] = {}
+    for line in ENV.read_text().splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        k, _, v = line.partition("=")
+        key = k.strip()
+        value = v.strip().strip('"').strip("'")
+        file_values[key] = value
+        os.environ.setdefault(key, value)
+    # The working AVM deployment uses the DashScope OpenAI-compatible image
+    # route for ReCA's image backends. Keep this fallback local to the
+    # smoke/gateway entry point so the public source never contains a provider
+    # credential and an explicit OPENAI_* override still wins.
+    if not os.environ.get("OPENAI_API_KEY") and os.environ.get("DASHSCOPE_API_KEY"):
+        os.environ["OPENAI_API_KEY"] = os.environ["DASHSCOPE_API_KEY"]
+        # DSW images can inject an unrelated OPENAI_BASE_URL globally. When
+        # the key is inherited from DashScope, prefer its compatible endpoint
+        # unless the local .env explicitly selected another image endpoint.
+        if not file_values.get("OPENAI_BASE_URL"):
+            os.environ["OPENAI_BASE_URL"] = "https://dashscope.aliyuncs.com/compatible-mode/v1"
+    if not os.environ.get("OPENAI_BASE_URL"):
+        os.environ["OPENAI_BASE_URL"] = "https://dashscope.aliyuncs.com/compatible-mode/v1"
+    if not os.environ.get("RECA_DISABLE_HTTP_PROXY"):
+        _PROXY_URL = os.environ.get("RECA_HTTP_PROXY_URL", "http://127.0.0.1:20172")
+        for k in ("HTTP_PROXY", "HTTPS_PROXY", "http_proxy", "https_proxy"):
+            os.environ.setdefault(k, _PROXY_URL)
+
+
+def setup_path() -> None:
+    sys.path.insert(0, str(REPO))
+    sys.path.insert(0, str(CONFIGS_DIR))
+
+
+def setup_render_defaults(backend: str = "happyhorse") -> None:
+    """Set the RECA_RENDER_BACKEND_* env vars consumed by dispatch_*.
+
+    Per backend caveats:
+      - wan2.7-i2v ``render_segment`` raises by design — that backend is
+        a bridge backend (native flf2v). So segment_i2v MUST NOT route to
+        wan2.7-i2v; only bridges may.
+      - ``ImageRefRole`` no longer includes ``start``/``end``; bridges carry
+        first/last frames inside ``BridgeRequest`` itself.
+      - Image kinds (portrait / anchor_image / image_edit) route to
+        ``gpt-image-2`` (not ``-pro``) — that's the registry default.
+    """
+    # Wan runs already depend on DashScope credentials. Use the working
+    # DashScope image backend for anchor assets by default; operators with a
+    # separate OpenAI Images gateway can set RECA_IMAGE_BACKEND=gpt-image-2.
+    image_backend = os.environ.get(
+        "RECA_IMAGE_BACKEND",
+        "wan2.7-image-pro" if backend == "wan" else "gpt-image-2",
+    ).strip()
+    os.environ.setdefault("RECA_RENDER_BACKEND_PORTRAIT", image_backend)
+    os.environ.setdefault("RECA_RENDER_BACKEND_ANCHOR_IMAGE", image_backend)
+    os.environ.setdefault("RECA_RENDER_BACKEND_IMAGE_EDIT", image_backend)
+    if backend == "wan":
+        wan_backend = os.environ.get("RECA_WAN30_BACKEND", "wan3.0-video").strip()
+        os.environ.setdefault("RECA_RENDER_BACKEND_SEGMENT_R2V", wan_backend)
+        os.environ.setdefault("RECA_RENDER_BACKEND_SEGMENT_I2V", wan_backend)
+        os.environ.setdefault("RECA_RENDER_BACKEND_BRIDGE", wan_backend)
+    elif backend == "ltx":
+        # LTX-2.3 local-diffusion: same backend handles i2v / r2v / bridge.
+        # bridge uses the keyframe-interpolation pipeline; segments use
+        # ti2vid_two_stages. See backends/media/impl/local/ltx_v2_3/_runner.py.
+        os.environ.setdefault("RECA_RENDER_BACKEND_SEGMENT_I2V", "ltx-2.3")
+        os.environ.setdefault("RECA_RENDER_BACKEND_SEGMENT_R2V", "ltx-2.3")
+        os.environ.setdefault("RECA_RENDER_BACKEND_BRIDGE", "ltx-2.3")
+    else:  # happyhorse
+        os.environ.setdefault("RECA_RENDER_BACKEND_SEGMENT_R2V", "happyhorse-1.0-r2v")
+        os.environ.setdefault("RECA_RENDER_BACKEND_SEGMENT_I2V", "happyhorse-1.0-i2v")
+        # Bridge needs native first+last anchoring; wan2.7-i2v is the bridge
+        # specialist (its render_segment raises, but render_bridge is fine).
+        os.environ.setdefault("RECA_RENDER_BACKEND_BRIDGE", "wan2.7-i2v")
+
+
+def _log_backend_caps(tag: str) -> None:
+    from videorlm.backends.media import for_kind
+
+    kinds = [
+        "portrait", "anchor_image", "image_edit",
+        "segment_r2v", "segment_i2v", "bridge",
+    ]
+    print(f"[{tag}] === backend routing ===", flush=True)
+    for kind in kinds:
+        try:
+            caps = for_kind(kind).capabilities()
+            print(
+                f"[{tag}]   {kind:14s} | {caps.backend_name:26s} | "
+                f"max_refs={caps.max_reference_images} max_conc={caps.max_concurrency}",
+                flush=True,
+            )
+        except Exception as e:
+            print(f"[{tag}]   {kind:14s} | <unresolvable: {str(e)[:60]}>", flush=True)
+    print(flush=True)
+
+
+def main() -> None:
+    args = parse_args()
+    load_env()
+    setup_path()
+    setup_render_defaults(args.backend)
+    if args.force_i2v:
+        os.environ["RECA_FORCE_I2V"] = "1"
+    print(
+        f"[{args.label}] backend branch = {args.backend}, seed = {args.seed}, "
+        f"validate = {args.validate}"
+        + (f"  [force-i2v=ON]" if args.force_i2v else ""),
+        flush=True,
+    )
+
+    # Cross-process semaphore — moved to _scripts/ alongside this file.
+    from videorlm.framework._scripts._xprocess_semaphore import maybe_enable_from_env
+    maybe_enable_from_env()
+
+    from videorlm.backends.llm.agents import (
+        OpenAIMessagesAgent,
+        QwenAgent,
+        QwenConfig,
+    )
+    from videorlm.framework import (
+        PARENT_SYSTEM_PROMPT,
+        SEGMENT_PLANNER_SYSTEM_PROMPT,
+        ValidatorParams,
+        SegmentValidatorParams,
+        merge_into_planner_output,
+        plan_segments_all,
+        plan_skeleton,
+        run_render,
+        to_render_plan,
+    )
+    from videorlm.framework._scripts._freeze_prompts import freeze_prompts
+    from videorlm.framework.validator.anchor import VALIDATOR_SYSTEM_PROMPT
+    from videorlm.framework._common.pools import (
+        ANCHOR_VALIDATOR_POOL_SIZE,
+        ANCHOR_VALIDATOR_ROLE,
+        PLANNER_POOL_SIZE,
+        PLANNER_ROLE,
+    )
+
+    def _maybe_validator(planner: dict, story_text: str) -> "ValidatorParams | None":
+        if not args.validate:
+            return None
+        # Reverted 2026-05-14 (afternoon): qwen3-vl-plus + CoT was tried
+        # but its vision reading on our anchors proved unreliable —
+        # hallucinated "missing 金冠 + 红披风" on anchors that visibly had
+        # both → 16/16 false-FAIL after tightening hard criteria. gpt-5.5
+        # baseline stayed at 4/6 recall but 0 FP (most reliable across
+        # 5 ablated strategies). The DashScope key_pool wiring in
+        # QwenAgent._chat_create stays in place — gpt-5.5 routes through
+        # the OpenAI-compat single-key path and the pool branch no-ops.
+        responses_key = os.environ.get("RECA_GPT_API_KEY", "").strip()
+        responses_url = os.environ.get("RECA_GPT_RESPONSES_URL", "").strip()
+        if responses_key and responses_url:
+            validator_cfg = QwenConfig(
+                model=os.environ.get("RECA_GPT_MODEL", "gpt-5.6-sol"),
+                api_key=responses_key,
+                base_url=responses_url,
+                provider="openai_responses",
+                system_prompt=VALIDATOR_SYSTEM_PROMPT,
+                temperature=0.2,
+                role=ANCHOR_VALIDATOR_ROLE,
+                max_concurrency=ANCHOR_VALIDATOR_POOL_SIZE,
+                request_timeout_s=900.0,
+                inline_images=True,
+            )
+        else:
+            api_key_v = os.environ.get("OPENAI_API_KEY", "")
+            base_url_v = os.environ.get("OPENAI_BASE_URL", "") or "https://api.openai.com/v1"
+            if not base_url_v.rstrip("/").endswith("/v1"):
+                base_url_v = base_url_v.rstrip("/") + "/v1"
+            validator_cfg = QwenConfig(
+                model="gpt-5.5",
+                api_key=api_key_v,
+                base_url=base_url_v,
+                system_prompt=VALIDATOR_SYSTEM_PROMPT,
+                temperature=0.2,
+                role=ANCHOR_VALIDATOR_ROLE,
+                max_concurrency=ANCHOR_VALIDATOR_POOL_SIZE,
+                request_timeout_s=900.0,
+                inline_images=True,
+            )
+        return ValidatorParams(
+            planner=planner,
+            story=story_text,
+            validator_cfg=validator_cfg,
+            max_repair_attempts=args.max_repair_attempts,
+        )
+
+    def _maybe_segment_validator(planner: dict, story_text: str) -> "SegmentValidatorParams | None":
+        if not args.validate_segments:
+            return None
+        dashscope_key_sv = os.environ.get("DASHSCOPE_API_KEY", "")
+        if not dashscope_key_sv:
+            raise SystemExit(
+                f"[{args.label}] DASHSCOPE_API_KEY missing — needed for segment validator router"
+            )
+        dashscope_base = "https://dashscope.aliyuncs.com/compatible-mode/v1"
+        router_cfg = QwenConfig(
+            model="qwen3.6-plus",
+            api_key=dashscope_key_sv,
+            base_url=dashscope_base,
+            temperature=0.2,
+            request_timeout_s=120.0,
+        )
+        replan_model = os.environ.get("RECA_PLANNER_MODEL", "qwen3.6-max-preview")
+        sp_replan_cfg = QwenConfig(
+            model=replan_model,
+            api_key=dashscope_key_sv,
+            base_url=dashscope_base,
+            temperature=0.3,
+            request_timeout_s=900.0,
+        )
+        # CLI > env > 模块默认(None 一路传下去,由 validator 模块决定)
+        def _opt_float(cli_val, env_name):
+            if cli_val is not None:
+                return float(cli_val)
+            raw = os.environ.get(env_name, "").strip()
+            return float(raw) if raw else None
+
+        def _opt_int(cli_val, env_name):
+            if cli_val is not None:
+                return int(cli_val)
+            raw = os.environ.get(env_name, "").strip()
+            return int(raw) if raw else None
+
+        raw_strategies = args.segment_repair_strategies
+        if raw_strategies is None:
+            raw_strategies = os.environ.get("RECA_SEGMENT_REPAIR_STRATEGIES")
+        if raw_strategies is None:
+            strategies = ("seed_reroll", "micro_adjust", "replan")
+        else:
+            strategies = tuple(x.strip() for x in raw_strategies.split(",") if x.strip())
+        unknown = [x for x in strategies
+                   if x not in ("seed_reroll", "micro_adjust", "replan")]
+        if unknown:
+            raise SystemExit(
+                f"[{args.label}] --segment-repair-strategies 含未知策略 {unknown}; "
+                f"合法值: seed_reroll / micro_adjust / replan"
+            )
+
+        best_of_n = not args.no_segment_best_of_n
+        if best_of_n and os.environ.get("RECA_SEGMENT_BEST_OF_N", "").strip() in ("0", "false", "False"):
+            best_of_n = False
+
+        on_error = (
+            args.segment_validator_on_error
+            or os.environ.get("RECA_SEGMENT_VALIDATOR_ON_ERROR", "").strip()
+            or "raise"
+        )
+        if on_error not in ("raise", "accept"):
+            raise SystemExit(
+                f"[{args.label}] --segment-validator-on-error 只能是 raise / accept, 得到 {on_error!r}"
+            )
+
+        params = SegmentValidatorParams(
+            planner=planner,
+            story=story_text,
+            router_cfg=router_cfg,
+            sp_replan_cfg=sp_replan_cfg,
+            sp_micro_adjust_cfg=sp_replan_cfg,
+            max_repair_attempts=args.max_repair_attempts,
+            axis_pass_threshold=_opt_float(args.segment_axis_threshold,
+                                           "RECA_SEGMENT_AXIS_THRESHOLD"),
+            overall_pass_threshold=_opt_float(args.segment_overall_threshold,
+                                              "RECA_SEGMENT_OVERALL_THRESHOLD"),
+            validator_model=(args.segment_validator_model
+                             or os.environ.get("RECA_SEGMENT_VALIDATOR_MODEL", "").strip()
+                             or None),
+            video_sample_fps=_opt_int(args.segment_validator_fps,
+                                      "RECA_SEGMENT_VALIDATOR_FPS"),
+            allowed_strategies=strategies,
+            best_of_n=best_of_n,
+            on_error=on_error,
+        )
+        print(
+            f"[{args.label}] segment-verification: ON  "
+            f"model={params.validator_model or '<default qwen3-vl-plus>'}  "
+            f"thresholds=axis:{params.axis_pass_threshold if params.axis_pass_threshold is not None else '<0.6>'}"
+            f"/overall:{params.overall_pass_threshold if params.overall_pass_threshold is not None else '<0.7>'}  "
+            f"max_repair={params.max_repair_attempts}  "
+            f"strategies={list(params.allowed_strategies) or '[] (validate-only)'}  "
+            f"best_of_n={params.best_of_n}  on_error={params.on_error}",
+            flush=True,
+        )
+        return params
+
+    out_dir = Path(args.out_dir)
+    story_path = Path(args.story)
+    tag = args.label
+    out_dir.mkdir(parents=True, exist_ok=True)
+    story = story_path.read_text(encoding="utf-8").strip()
+    print(f"[{tag}] story={story_path.name} ({len(story)} chars), out_dir={out_dir}")
+
+    # Snapshot prompt module sources at run start (F9).
+    try:
+        freeze_prompts(out_dir)
+        print(f"[{tag}] frozen_prompts -> {out_dir / '_frozen_prompts'}/", flush=True)
+    except Exception as e:
+        print(f"[{tag}] freeze_prompts skipped ({type(e).__name__}: {str(e)[:120]})", flush=True)
+
+    rp_path = out_dir / "render_plan.json"
+    resume_mode = args.resume and rp_path.exists()
+    if resume_mode:
+        print(f"[{tag}] --resume + {rp_path.name} exists → skipping plan", flush=True)
+        render_plan = json.loads(rp_path.read_text())
+        _log_backend_caps(tag)
+
+        t0 = time.time()
+        if args.render:
+            t3 = time.time()
+            planner_for_v = (
+                json.loads((out_dir / "planner.json").read_text())
+                if (args.validate or args.validate_segments) and (out_dir / "planner.json").exists()
+                else {}
+            )
+            vp = _maybe_validator(planner_for_v, story)
+            svp = _maybe_segment_validator(planner_for_v, story)
+            final_mp4 = run_render(
+                render_plan, out_dir / "run" / "final.mp4",
+                validator=vp,
+                segment_validator=svp,
+                seed=args.seed,
+            )
+            print(f"[{tag}] run_render OK in {time.time()-t3:.1f}s -> {final_mp4}", flush=True)
+        print(f"[{tag}] total wall time: {time.time()-t0:.1f}s", flush=True)
+        return
+
+    # ── Planner LLM (parent + segment_planner): qwen3.6-max-preview on DashScope. ──
+    # Was gpt-5.5 via the OpenAI-compatible gateway; gateway's CF gateway truncates long stream output at
+    # ~16k chars / ~3-4 min wall (and 524s the non-stream path at 100s origin
+    # timeout), so plan_skeleton's ~32k-char JSON reply gets cut mid-portrait_plan
+    # every attempt and json.loads always fails. Diagnosis: curl/urllib/httpx/
+    # openai SDK all hit the same cap, so it's infra not code. Routing the text-
+    # only planners (parent / segment_planner / sp_replan) to DashScope bypasses
+    # the gateway → CF chain entirely. Image-gen backends (gpt-image-2) still
+    # route through gateway via RECA_RENDER_BACKEND_*. Anchor validator stays on
+    # gpt-5.5 because qwen3-vl-plus was unreliable on anchor vision (see comment
+    # near _maybe_validator above). Validator output is small so the cap doesn't
+    # bite there.
+    # Planner endpoint override (used for A/B testing gpt-5.5 vs qwen3.6-max-preview):
+    #   RECA_PLANNER_API_KEY + RECA_PLANNER_BASE_URL — when both set, route planner
+    #   through that endpoint instead of DashScope. Default stays DashScope.
+    override_key = os.environ.get("RECA_PLANNER_API_KEY", "").strip()
+    override_url = os.environ.get("RECA_PLANNER_BASE_URL", "").strip()
+    if override_key and override_url:
+        planner_api_key = override_key
+        planner_base_url = override_url
+        if not planner_base_url.rstrip("/").endswith("/v1"):
+            planner_base_url = planner_base_url.rstrip("/") + "/v1"
+        planner_default_model = "gpt-5.5"
+    else:
+        planner_api_key = os.environ.get("DASHSCOPE_API_KEY", "")
+        if not planner_api_key:
+            raise SystemExit(f"[{tag}] DASHSCOPE_API_KEY missing in .env (needed for qwen3.6-max-preview planner)")
+        planner_base_url = "https://dashscope.aliyuncs.com/compatible-mode/v1"
+        planner_default_model = "qwen3.6-max-preview"
+    planner_model = os.environ.get("RECA_PLANNER_MODEL", planner_default_model)
+    dashscope_key = planner_api_key  # name kept for the cfg lines below
+
+    # OPENAI key/url still used by anchor validator (vision) and downstream
+    # image-gen backends; surface here for log clarity but no longer the
+    # planner's source.
+    api_key = os.environ.get("OPENAI_API_KEY", "")
+    base_url = os.environ.get("OPENAI_BASE_URL", "") or "https://api.openai.com/v1"
+    if not base_url.rstrip("/").endswith("/v1"):
+        base_url = base_url.rstrip("/") + "/v1"
+
+    # Planner ingress selector. ``RECA_PLANNER_API_PATH``:
+    #   "auto" (default) — gpt-5* models use /v1/messages with thinking,
+    #     everything else uses /v1/chat/completions (legacy path).
+    #   "messages" / "chat" — force the named path regardless of model.
+    api_path = os.environ.get("RECA_PLANNER_API_PATH", "auto").strip().lower()
+    if api_path == "auto":
+        api_path = "messages" if planner_model.lower().startswith("gpt-5") else "chat"
+    if api_path not in ("messages", "chat"):
+        raise SystemExit(f"[{tag}] bad RECA_PLANNER_API_PATH={api_path!r} (expected messages/chat/auto)")
+
+    thinking_budget = int(os.environ.get("RECA_PLANNER_THINKING_BUDGET", "16000"))
+    # qwen3-series thinking via DashScope extra_body. Toggle with
+    # RECA_QWEN_THINKING (default on; the planner is reasoning-heavy and the
+    # cost diff is small per call).
+    qwen_thinking = os.environ.get("RECA_QWEN_THINKING", "1").strip() not in ("0", "", "false", "False")
+
+    # Pick the provider-specific config: Anthropic Messages API has its
+    # own thinking_budget_tokens field on ``OpenAIMessagesConfig``;
+    # everything else uses ``QwenConfig`` (DashScope chat.completions).
+    if api_path == "messages":
+        from videorlm.backends.llm.agents.openai_messages import OpenAIMessagesConfig
+        cfg = OpenAIMessagesConfig(
+            model=planner_model, api_key=planner_api_key, base_url=planner_base_url,
+            system_prompt=PARENT_SYSTEM_PROMPT,
+            temperature=0.3, request_timeout_s=900.0,
+            role=PLANNER_ROLE, max_concurrency=PLANNER_POOL_SIZE,
+            thinking_budget_tokens=thinking_budget,
+        )
+    else:
+        cfg = QwenConfig(
+            model=planner_model, api_key=planner_api_key, base_url=planner_base_url,
+            system_prompt=PARENT_SYSTEM_PROMPT,
+            temperature=0.3, request_timeout_s=900.0,
+            role=PLANNER_ROLE, max_concurrency=PLANNER_POOL_SIZE,
+            enable_thinking=qwen_thinking and "qwen" in planner_model.lower(),
+        )
+    sp_api_key = os.environ.get("RECA_SP_API_KEY", "").strip() or planner_api_key
+    sp_base_url = os.environ.get("RECA_SP_BASE_URL", "").strip() or planner_base_url
+    if not sp_base_url.rstrip("/").endswith("/v1"):
+        sp_base_url = sp_base_url.rstrip("/") + "/v1"
+    sp_api_path = os.environ.get("RECA_SP_API_PATH", "").strip().lower() or api_path
+    sp_model = os.environ.get("RECA_SP_MODEL", "qwen3.6-max-preview")
+    if sp_api_path == "messages":
+        from videorlm.backends.llm.agents.openai_messages import OpenAIMessagesConfig
+        sp_cfg = OpenAIMessagesConfig(
+            model=sp_model,
+            api_key=sp_api_key,
+            base_url=sp_base_url,
+            system_prompt=SEGMENT_PLANNER_SYSTEM_PROMPT,
+            temperature=0.3, request_timeout_s=900.0,
+            role=PLANNER_ROLE, max_concurrency=PLANNER_POOL_SIZE,
+            thinking_budget_tokens=int(os.environ.get("RECA_SP_THINKING_BUDGET", "8000")),
+        )
+    else:
+        sp_cfg = QwenConfig(
+            model=sp_model,
+            api_key=sp_api_key,
+            base_url=sp_base_url,
+            system_prompt=SEGMENT_PLANNER_SYSTEM_PROMPT,
+            temperature=0.3, request_timeout_s=900.0,
+            role=PLANNER_ROLE, max_concurrency=PLANNER_POOL_SIZE,
+            enable_thinking=qwen_thinking,
+        )
+    if not sp_cfg.api_key:
+        raise SystemExit(f"[{tag}] segment planner API key missing")
+    dashscope_key = planner_api_key  # name kept for downstream legacy refs
+
+    print(
+        f"[{tag}] planner api_path={api_path} model={planner_model} "
+        f"sp_api_path={sp_api_path} sp_model={sp_model} "
+        f"thinking_budget={getattr(cfg, 'thinking_budget_tokens', 0)} "
+        f"qwen_thinking={getattr(cfg, 'enable_thinking', False)}",
+        flush=True,
+    )
+    _log_backend_caps(tag)
+
+    if api_path == "messages":
+        parent_agent_ctx = OpenAIMessagesAgent(cfg)
+    else:
+        parent_agent_ctx = QwenAgent(cfg)
+
+    t0 = time.time()
+    with parent_agent_ctx as parent:
+        skeleton = plan_skeleton(parent, story)
+        (out_dir / "skeleton.json").write_text(json.dumps(skeleton, ensure_ascii=False, indent=2))
+        print(f"[{tag}] plan_skeleton OK; shots={len(skeleton['shots'])}", flush=True)
+
+        if args.segments:
+            segments = plan_segments_all(parent.state, skeleton, sp_cfg)
+            planner = merge_into_planner_output(skeleton, segments)
+            (out_dir / "planner.json").write_text(json.dumps(planner, ensure_ascii=False, indent=2))
+            render_plan = to_render_plan(
+                planner, out_dir / "run", seed=args.seed,
+                video_resolution=args.video_resolution,
+            )
+            (out_dir / "render_plan.json").write_text(json.dumps(render_plan, ensure_ascii=False, indent=2))
+            print(f"[{tag}] plan_segments_all OK; segments={len(segments)}", flush=True)
+
+            if args.render:
+                t3 = time.time()
+                vp = _maybe_validator(planner, story)
+                svp = _maybe_segment_validator(planner, story)
+                final_mp4 = run_render(
+                    render_plan, out_dir / "run" / "final.mp4",
+                    validator=vp,
+                    segment_validator=svp,
+                    seed=args.seed,
+                )
+                print(f"[{tag}] run_render OK in {time.time()-t3:.1f}s -> {final_mp4}", flush=True)
+
+    print(f"[{tag}] total wall time: {time.time()-t0:.1f}s", flush=True)
+
+
+if __name__ == "__main__":
+    main()

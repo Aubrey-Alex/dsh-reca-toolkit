@@ -1,0 +1,4 @@
+# Mount the ReCA tools after dsh-base when the DSH web profile starts.
+- insert:
+    - id: reca-toolkit
+      name: dsh-reca-toolkit

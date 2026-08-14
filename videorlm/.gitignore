@@ -1,0 +1,26 @@
+# Generated artifacts (huge, don't push)
+outputs/
+
+# Python bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+
+# Local-state runtime files (agent session scratch)
+.omc/
+*.log
+
+# Editor / OS junk
+.DS_Store
+.vscode/
+.idea/
+*.swp
+
+# Local cache scaffolding
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Local uploads cache (segment tails republished etc.)
+**/segment_tails/

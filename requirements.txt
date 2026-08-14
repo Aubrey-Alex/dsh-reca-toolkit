@@ -1,0 +1,15 @@
+# ReCA runtime dependencies
+dashscope
+openai
+pydantic>=2
+av
+Pillow
+oss2
+httpx
+langchain
+langchain-openai
+numpy
+opencv-python
+scikit-image
+jinja2
+typing_extensions

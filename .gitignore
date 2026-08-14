@@ -1,0 +1,27 @@
+# Secrets and local configuration
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Runtime state and generated media
+.dsh_runs/
+byok_jobs/
+outputs/
+videorlm/outputs/
+*.mp4
+*.mov
+*.webm
+*.png
+*.jpg
+*.jpeg
+*.url
+*.jsonl
+*.log
+
+# Python / Node caches
+__pycache__/
+*.py[cod]
+.pytest_cache/
+node_modules/

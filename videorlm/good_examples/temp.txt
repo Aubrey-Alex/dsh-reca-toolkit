@@ -1,0 +1,13 @@
+portrait prompt,location prompt,prop prompt,shots,shot_start_anchor_prompt=shot_planner(prompt)
+segment_prompt=segment_planner(shot)
+render阶段
+1. render portrait prompt，location prompt,prop prompt(t2i). ->validation
+2. render shot_start_anchor_prompt(i2i [portrait picture...,location picture...,prop picture...]). ->validation
+3. shot inner segment 串行 R2V 外推
+   seg0.first_frame = shot_start_anchor
+   seg_k.first_frame = seg_{k-1}.last_frame  (k>=1)
+   shot 尾帧 = 最后一个 segment 的自然尾帧 (不预生成 end_anchor)
+4. shot outer (transition.mode):
+   cut    -> 直接剪辑, 无渲染
+   bridge -> flf2v(first = from_shot_last_frame, last = to_shot_start_anchor, duration_s)
+5. concat 按 shot 顺序 (cut 直接接, bridge 处插入 bridge 视频)

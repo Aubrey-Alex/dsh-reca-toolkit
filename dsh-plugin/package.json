@@ -1,0 +1,17 @@
+{
+  "name": "dsh-reca-toolkit",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "src/index.js",
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "peerDependencies": {
+    "@deepseek-ai/dsh-skill": "^0.0.1",
+    "@deepseek-ai/dsh-tools": "^0.0.1",
+    "cordis": "^4.0.0-rc.7"
+  }
+}

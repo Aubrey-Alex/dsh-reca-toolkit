@@ -1,0 +1,617 @@
+{
+  "source": {
+    "input_path": "input_examples_2/coastal_train_festival_5x16_seed0/framework_input.json",
+    "n_shots": 5,
+    "per_shot_duration_s": [
+      16,
+      16,
+      16,
+      16,
+      16
+    ],
+    "seed": 0
+  },
+  "portrait_plan": {
+    "ye_nan": {
+      "id": "ye_nan",
+      "request_type": "RenderRequest",
+      "render_request": {
+        "request_id": "ye_nan",
+        "kind": "portrait",
+        "prompt": "写实电影感16:9人物 portrait reference，膝上半身构图。叶南是年轻男性列车乘务员，短黑发，真实自然脸，蓝白铁路制服有清楚衣领、肩线、袖口和轻微布料褶皱；左手护住掌心大小的银色胶片相机，红色贝壳挂带垂在相机侧面并清晰可辨。背景是夏日靠海月台和海面强光的浅景深虚化，整体真实可拍。",
+        "duration_s": 0,
+        "references": [],
+        "seed": 0,
+        "resolution": "1280x720",
+        "output_path": "",
+        "log_dir": "",
+        "negative_prompt": "换脸, 女性化, 变成小孩, 制服变色, 制服变成西装或武侠服, 相机消失, 相机变成手机, 红贝壳消失, 手指畸形, 多手指, 断手, 武器, 血腥, 严重受伤, 可读文字, 字幕, logo, watermark, 动漫, 游戏CG, 塑料皮肤, 过度磨皮",
+        "prompt_extend": false
+      }
+    },
+    "yellow_poncho_girl": {
+      "id": "yellow_poncho_girl",
+      "request_type": "RenderRequest",
+      "render_request": {
+        "request_id": "yellow_poncho_girl",
+        "kind": "portrait",
+        "prompt": "写实电影感16:9 supporting portrait reference。小女孩穿明亮黄色雨披，真实儿童比例，表情焦急但不惊恐，站在夏日海边小城的渔港节日街人群边缘；背景有彩旗、无字灯笼和海面强光。她不参与冲突，不拿武器，不做夸张奔跑姿势。",
+        "duration_s": 0,
+        "references": [],
+        "seed": 0,
+        "resolution": "1280x720",
+        "output_path": "",
+        "log_dir": "",
+        "negative_prompt": "变成成年人, 雨披变色, 换成校服或礼服, 恐怖表情, 武器, 血腥, 打斗姿势, 夸张卡通脸, 动漫, 游戏CG, 可读文字, 字幕, logo, watermark",
+        "prompt_extend": false
+      }
+    }
+  },
+  "location_plan": {
+    "coastal_train_festival_standard_5x16": {
+      "id": "coastal_train_to_lighthouse_route",
+      "request_type": "RenderRequest",
+      "render_request": {
+        "request_id": "coastal_train_to_lighthouse_route",
+        "kind": "anchor_image",
+        "prompt": "写实电影感16:9完整地点参考图，夏日海边小城的连续路线。画面应同时建立蓝白慢车靠海月台、老式车厢、连接海堤桥的临时通道、渔港节日街、灯塔栈道和明亮海面。午后硬光强烈，海面反光明显，彩旗和无字灯笼被海风轻微吹动。整体是真实可拍的海边铁路与渔港空间，不是舞台、武馆、现代高楼街区或奇幻景观。",
+        "duration_s": 0,
+        "references": [],
+        "seed": 0,
+        "resolution": "1280x720",
+        "output_path": "",
+        "log_dir": "",
+        "negative_prompt": "可读文字, 字幕, logo, watermark, 室内武馆, 夜晚, 空街, 舞台布景, 舞台灯光, 武器, 血腥, 城市高楼, 雪景, 沙漠, 山林, 赛博霓虹, 动漫, 游戏CG, 低清晰度, 灯塔巨大化, 海面消失",
+        "prompt_extend": false
+      }
+    }
+  },
+  "boundarys": {
+    "boundary_anchors": [
+      {
+        "id": "a00_platform_start",
+        "request_type": "RenderRequest",
+        "render_request": {
+          "request_id": "a00_platform_start",
+          "kind": "anchor_image",
+          "prompt": "写实16:9首帧关键帧。夏日靠海月台，蓝白慢车停在旁边，长椅上有一台掌心大小的银色胶片相机，红色贝壳挂带清楚可见。叶南穿蓝白铁路制服站在月台前景，刚注意到相机；远处海面强光明亮。",
+          "duration_s": 0,
+          "references": [
+            {
+              "role": "portrait",
+              "url": ""
+            },
+            {
+              "role": "reference",
+              "url": ""
+            },
+            {
+              "role": "scene",
+              "url": ""
+            }
+          ],
+          "seed": 0,
+          "resolution": "1280x720",
+          "output_path": "",
+          "log_dir": "",
+          "negative_prompt": "相机消失, 红贝壳消失, 叶南换脸, 制服变色, 现代地铁站, 夜晚, 可读文字, 字幕, logo, watermark",
+          "prompt_extend": false
+        }
+      },
+      {
+        "id": "a00_platform_end",
+        "request_type": "RenderRequest",
+        "render_request": {
+          "request_id": "a00_platform_end",
+          "kind": "anchor_image",
+          "prompt": "写实16:9尾帧关键帧。叶南已经拿起银色胶片相机，红色贝壳挂带垂在手边；他抬头看见穿黄色雨披的小女孩刚跑进蓝白慢车车门，身体准备跟上。月台、车门和明亮海面保持同一空间。",
+          "duration_s": 0,
+          "references": [
+            {
+              "role": "portrait",
+              "url": ""
+            },
+            {
+              "role": "reference",
+              "url": ""
+            },
+            {
+              "role": "scene",
+              "url": ""
+            }
+          ],
+          "seed": 0,
+          "resolution": "1280x720",
+          "output_path": "",
+          "log_dir": "",
+          "negative_prompt": "小女孩消失, 相机变手机, 红贝壳消失, 叶南换脸, 制服变色, 拥挤混乱, 武器, 血腥, 可读文字, watermark",
+          "prompt_extend": false
+        }
+      },
+      {
+        "id": "a01_carriage_start",
+        "request_type": "RenderRequest",
+        "render_request": {
+          "request_id": "a01_carriage_start",
+          "kind": "anchor_image",
+          "prompt": "写实16:9首帧关键帧。镜头跟随叶南进入老式蓝白车厢，叶南手里护着银色胶片相机和红色贝壳挂带，前方能看到黄色雨披小女孩的背影。窗外海面闪着强光，乘客自然侧身让路。",
+          "duration_s": 0,
+          "references": [
+            {
+              "role": "portrait",
+              "url": ""
+            },
+            {
+              "role": "reference",
+              "url": ""
+            },
+            {
+              "role": "scene",
+              "url": ""
+            }
+          ],
+          "seed": 0,
+          "resolution": "1280x720",
+          "output_path": "",
+          "log_dir": "",
+          "negative_prompt": "相机消失, 红贝壳消失, 小女孩变装, 现代地铁, 黑夜, 拥挤踩踏, 可读广告文字, 字幕, logo",
+          "prompt_extend": false
+        }
+      },
+      {
+        "id": "a01_carriage_end",
+        "request_type": "RenderRequest",
+        "render_request": {
+          "request_id": "a01_carriage_end",
+          "kind": "anchor_image",
+          "prompt": "写实16:9尾帧关键帧。叶南穿过两节老式车厢，仍稳稳护住银色相机，红色贝壳挂带可见；前方连接门打开，强风和海面强光从门外涌入，乘客在两侧让开。",
+          "duration_s": 0,
+          "references": [
+            {
+              "role": "portrait",
+              "url": ""
+            },
+            {
+              "role": "reference",
+              "url": ""
+            },
+            {
+              "role": "scene",
+              "url": ""
+            }
+          ],
+          "seed": 0,
+          "resolution": "1280x720",
+          "output_path": "",
+          "log_dir": "",
+          "negative_prompt": "相机消失, 红贝壳消失, 叶南换脸, 制服变色, 现代高铁, 夜晚, 武器, 血腥, 可读文字, watermark",
+          "prompt_extend": false
+        }
+      },
+      {
+        "id": "a02_bridge_start",
+        "request_type": "RenderRequest",
+        "render_request": {
+          "request_id": "a02_bridge_start",
+          "kind": "anchor_image",
+          "prompt": "写实16:9首帧关键帧。叶南从车门跨上海堤桥临时通道，蓝白车身在一侧，明亮海面在另一侧，风把制服下摆和红色贝壳挂带吹起；他仍护着银色胶片相机。",
+          "duration_s": 0,
+          "references": [
+            {
+              "role": "portrait",
+              "url": ""
+            },
+            {
+              "role": "reference",
+              "url": ""
+            },
+            {
+              "role": "scene",
+              "url": ""
+            }
+          ],
+          "seed": 0,
+          "resolution": "1280x720",
+          "output_path": "",
+          "log_dir": "",
+          "negative_prompt": "相机消失, 红贝壳消失, 断桥灾难, 室内走廊, 夜晚, 血腥, 武器, 字幕, logo",
+          "prompt_extend": false
+        }
+      },
+      {
+        "id": "a02_bridge_end",
+        "request_type": "RenderRequest",
+        "render_request": {
+          "request_id": "a02_bridge_end",
+          "kind": "anchor_image",
+          "prompt": "写实16:9尾帧关键帧。叶南沿海堤桥临时通道稳步前进，海鸥从远处掠过，蓝白车身和海面形成快速线条；前方通向渔港节日街，人群和彩旗开始出现。",
+          "duration_s": 0,
+          "references": [
+            {
+              "role": "portrait",
+              "url": ""
+            },
+            {
+              "role": "reference",
+              "url": ""
+            },
+            {
+              "role": "scene",
+              "url": ""
+            }
+          ],
+          "seed": 0,
+          "resolution": "1280x720",
+          "output_path": "",
+          "log_dir": "",
+          "negative_prompt": "相机消失, 红贝壳消失, 叶南换脸, 高楼天桥, 室内通道, 夜晚, 灾难场景, 可读文字, watermark",
+          "prompt_extend": false
+        }
+      },
+      {
+        "id": "a03_festival_start",
+        "request_type": "RenderRequest",
+        "render_request": {
+          "request_id": "a03_festival_start",
+          "kind": "anchor_image",
+          "prompt": "写实16:9首帧关键帧。渔港节日街人群流动，彩旗、无字灯笼、鱼摊、水桶和风车玩具在阳光下发亮；黄色雨披小女孩混入人群前方，叶南拿着银色相机进入街道，没有冲撞。",
+          "duration_s": 0,
+          "references": [
+            {
+              "role": "portrait",
+              "url": ""
+            },
+            {
+              "role": "reference",
+              "url": ""
+            },
+            {
+              "role": "scene",
+              "url": ""
+            }
+          ],
+          "seed": 0,
+          "resolution": "1280x720",
+          "output_path": "",
+          "log_dir": "",
+          "negative_prompt": "小女孩消失, 相机消失, 红贝壳消失, 武器, 血腥, 室内武馆, 夜晚, 可读招牌文字, 字幕, watermark",
+          "prompt_extend": false
+        }
+      },
+      {
+        "id": "a03_festival_end",
+        "request_type": "RenderRequest",
+        "render_request": {
+          "request_id": "a03_festival_end",
+          "kind": "anchor_image",
+          "prompt": "写实16:9尾帧关键帧。叶南在人群中举起银色胶片相机喊小女孩，红色贝壳挂带在阳光下晃动；小女孩回头望向灯塔栈道方向，鱼摊、水桶、彩旗和无字灯笼保持清楚。",
+          "duration_s": 0,
+          "references": [
+            {
+              "role": "portrait",
+              "url": ""
+            },
+            {
+              "role": "reference",
+              "url": ""
+            },
+            {
+              "role": "scene",
+              "url": ""
+            }
+          ],
+          "seed": 0,
+          "resolution": "1280x720",
+          "output_path": "",
+          "log_dir": "",
+          "negative_prompt": "相机变手机, 红贝壳消失, 小女孩换衣服, 人群混乱, 武器, 血腥, 场景跳切, 可读文字, logo",
+          "prompt_extend": false
+        }
+      },
+      {
+        "id": "a04_lighthouse_start",
+        "request_type": "RenderRequest",
+        "render_request": {
+          "request_id": "a04_lighthouse_start",
+          "kind": "anchor_image",
+          "prompt": "写实16:9首帧关键帧。灯塔栈道前，黄色雨披小女孩停下，叶南拿着银色胶片相机靠近，红色贝壳挂带可见；远处白色灯塔、明亮海面和渔船轮廓形成开阔背景。",
+          "duration_s": 0,
+          "references": [
+            {
+              "role": "portrait",
+              "url": ""
+            },
+            {
+              "role": "reference",
+              "url": ""
+            },
+            {
+              "role": "scene",
+              "url": ""
+            }
+          ],
+          "seed": 0,
+          "resolution": "1280x720",
+          "output_path": "",
+          "log_dir": "",
+          "negative_prompt": "相机消失, 红贝壳消失, 小女孩变成年人, 黑夜, 暴风雨, 城市高楼, 可读文字, watermark",
+          "prompt_extend": false
+        }
+      },
+      {
+        "id": "a04_lighthouse_end",
+        "request_type": "RenderRequest",
+        "render_request": {
+          "request_id": "a04_lighthouse_end",
+          "kind": "anchor_image",
+          "prompt": "写实16:9结尾关键帧。叶南把银色胶片相机递还给黄色雨披小女孩，两人转向海边灯塔；远处渔船缓慢进港，海风吹动红色贝壳挂带，画面停在明亮海面和温暖午后光线中。",
+          "duration_s": 0,
+          "references": [
+            {
+              "role": "portrait",
+              "url": ""
+            },
+            {
+              "role": "reference",
+              "url": ""
+            },
+            {
+              "role": "scene",
+              "url": ""
+            }
+          ],
+          "seed": 0,
+          "resolution": "1280x720",
+          "output_path": "",
+          "log_dir": "",
+          "negative_prompt": "相机消失, 红贝壳消失, 人物换脸, 小女孩消失, 黑夜, 血腥, 武器, 字幕, logo, watermark",
+          "prompt_extend": false
+        }
+      }
+    ],
+    "boundary_policies": [
+      {
+        "id": "bp00_platform_to_carriage",
+        "mode": "bridge",
+        "request_type": "FLF2VRequest",
+        "flf2v_request": {
+          "request_id": "bp00_platform_to_carriage",
+          "kind": "bridge",
+          "prompt": "写实电影感16:9桥接段，严格承接 start_anchor 的靠海月台车门状态，并落到 end_anchor 的老式车厢内部状态。镜头从叶南肩后跟随他穿过蓝白慢车车门，外部月台强光逐渐转为车厢内的窗边海面反光；银色胶片相机、红色贝壳挂带、蓝白制服和黄色雨披小女孩的方向线索必须连续。车门结构、扶手、台阶和车厢过道要自然衔接，乘客只做安静让路的背景反应。不要黑场、跳切、瞬移或把场景换成现代地铁。",
+          "first_url": "",
+          "last_url": "",
+          "duration_s": 4,
+          "seed": 0,
+          "output_path": "",
+          "log_dir": "",
+          "resolution": "1280x720",
+          "references": [],
+          "negative_prompt": "场景硬跳, 人物换脸, 制服变色, 小女孩换衣服, 相机消失, 红贝壳消失, 武器, 血腥, 追逐撞人, 超现实瞬移, 室内武馆, 夜晚, 可读文字, 字幕, logo, watermark",
+          "prompt_extend": false
+        }
+      },
+      {
+        "id": "bp01_carriage_to_bridge",
+        "mode": "bridge",
+        "request_type": "FLF2VRequest",
+        "flf2v_request": {
+          "request_id": "bp01_carriage_to_bridge",
+          "kind": "bridge",
+          "prompt": "写实电影感16:9桥接段，严格从老式车厢连接门尾帧过渡到海堤桥临时通道首帧。镜头跟随叶南走向打开的车门，车厢窄过道、乘客侧身让路和窗外海光逐渐被室外强风、蓝白车身线条、金属栏杆和闪亮海面取代。叶南手中的银色相机和红色贝壳挂带持续可见，制服颜色和脸部不变。运动感来自真实海风和手持跟拍，不要断桥灾难、危险坠落、过度模糊或突然换景。",
+          "first_url": "",
+          "last_url": "",
+          "duration_s": 4,
+          "seed": 0,
+          "output_path": "",
+          "log_dir": "",
+          "resolution": "1280x720",
+          "references": [],
+          "negative_prompt": "场景硬跳, 人物换脸, 制服变色, 小女孩换衣服, 相机消失, 红贝壳消失, 武器, 血腥, 追逐撞人, 超现实瞬移, 室内武馆, 夜晚, 可读文字, 字幕, logo, watermark",
+          "prompt_extend": false
+        }
+      },
+      {
+        "id": "bp02_bridge_to_festival",
+        "mode": "bridge",
+        "request_type": "FLF2VRequest",
+        "flf2v_request": {
+          "request_id": "bp02_bridge_to_festival",
+          "kind": "bridge",
+          "prompt": "写实电影感16:9桥接段，严格从海堤桥通道延续到渔港节日街入口。镜头沿通道向前跟随叶南，蓝白车身和海面反光从两侧逐渐退开，街口的彩旗、无字灯笼、鱼摊、水桶和人群自然进入画面。黄色雨披小女孩在前方街口短暂出现并混入人群，叶南举起银色相机继续追赶但步伐稳定。空间变化要像同一条路线的连续推进，不要瞬移、拥挤踩踏、夜景或文字招牌。",
+          "first_url": "",
+          "last_url": "",
+          "duration_s": 4,
+          "seed": 0,
+          "output_path": "",
+          "log_dir": "",
+          "resolution": "1280x720",
+          "references": [],
+          "negative_prompt": "场景硬跳, 人物换脸, 制服变色, 小女孩换衣服, 相机消失, 红贝壳消失, 武器, 血腥, 追逐撞人, 超现实瞬移, 室内武馆, 夜晚, 可读文字, 字幕, logo, watermark",
+          "prompt_extend": false
+        }
+      },
+      {
+        "id": "bp03_festival_to_lighthouse",
+        "mode": "bridge",
+        "request_type": "FLF2VRequest",
+        "flf2v_request": {
+          "request_id": "bp03_festival_to_lighthouse",
+          "kind": "bridge",
+          "prompt": "写实电影感16:9桥接段，严格从渔港节日街人群过渡到灯塔栈道停步。镜头跟随叶南穿过鱼摊、水桶、彩旗和风车玩具之间的可行通道，周围路人自然让开但不混乱；银色胶片相机和红色贝壳挂带保持清楚。前方黄色雨披小女孩听到呼喊后在街道尽头放慢并回头，背景从摊位逐渐展开为白色灯塔、木质栈道和明亮海面。不要暴力拉扯、摔倒、灯塔突然弹出或人物换脸。",
+          "first_url": "",
+          "last_url": "",
+          "duration_s": 4,
+          "seed": 0,
+          "output_path": "",
+          "log_dir": "",
+          "resolution": "1280x720",
+          "references": [],
+          "negative_prompt": "场景硬跳, 人物换脸, 制服变色, 小女孩换衣服, 相机消失, 红贝壳消失, 武器, 血腥, 追逐撞人, 超现实瞬移, 室内武馆, 夜晚, 可读文字, 字幕, logo, watermark",
+          "prompt_extend": false
+        }
+      }
+    ]
+  },
+  "segments": {
+    "seg00_platform_camera_found": {
+      "id": "seg00_platform_camera_found",
+      "request_type": "FLF2VRequest",
+      "flf2v_request": {
+        "request_id": "seg00_platform_camera_found",
+        "kind": "segment_r2v",
+        "prompt": "写实电影感16:9连续段落，承接 a00_platform_start 的靠海月台首帧。画面保持夏日午后强光、蓝白慢车、开放月台、木质长椅和闪亮海面；叶南的短黑发、蓝白铁路制服、温和专注的脸必须与 portrait 一致。核心动作是他发现长椅上的银色胶片相机，注意到红色贝壳挂带，判断这是孩子遗落的物品，然后稳步追向打开的车门。黄色雨披小女孩只作为前方方向线索出现，不能抢主角。镜头可轻微手持跟随，但动作克制真实，不冲撞人群，不切到现代车站；结尾必须落到叶南拿着相机接近车门、准备进入车厢。",
+        "first_url": "",
+        "last_url": "",
+        "duration_s": 16,
+        "seed": 0,
+        "output_path": "",
+        "log_dir": "",
+        "resolution": "1920x1080",
+        "references": [
+          {
+            "role": "portrait",
+            "url": ""
+          },
+          {
+            "role": "reference",
+            "url": ""
+          },
+          {
+            "role": "scene",
+            "url": ""
+          }
+        ],
+        "negative_prompt": "人物换脸, 叶南变成其他人, 小女孩变成成年人, 制服变色, 蓝白慢车消失, 相机消失, 相机变成手机, 红色贝壳挂带消失, 雨披颜色错误, 地点跳切, 现代地铁站, 现代高铁, 城市高楼, 夜景, 阴雨, 武器, 血腥, 严重受伤, 奔跑撞人, 打斗升级, 武侠飞踢, 超能力, 慢动作, 卡通, 动漫, 游戏CG, 低清晰度, 画面撕裂, 可读文字, 字幕, logo, watermark",
+        "prompt_extend": false
+      }
+    },
+    "seg01_old_carriage_follow": {
+      "id": "seg01_old_carriage_follow",
+      "request_type": "FLF2VRequest",
+      "flf2v_request": {
+        "request_id": "seg01_old_carriage_follow",
+        "kind": "segment_r2v",
+        "prompt": "写实电影感16:9车厢追随段落，承接叶南进入蓝白慢车的尾帧。空间保持老式慢车窄过道、旧式座椅、金属扶手、窗外高亮海面和安静让路的乘客；叶南始终护住银色胶片相机，红色贝壳挂带在手边可见。黄色雨披小女孩在车厢深处、座椅缝隙或连接门附近形成追随方向，不需要长时间正脸。镜头贴近叶南肩后或中近景，表现车厢轻微摇晃、海光扫过人物侧脸、乘客自然侧身让路。结尾进入更亮的连接门区域，海风和强光提示下一段海堤桥通道。",
+        "first_url": "",
+        "last_url": "",
+        "duration_s": 16,
+        "seed": 0,
+        "output_path": "",
+        "log_dir": "",
+        "resolution": "1920x1080",
+        "references": [
+          {
+            "role": "portrait",
+            "url": ""
+          },
+          {
+            "role": "reference",
+            "url": ""
+          },
+          {
+            "role": "scene",
+            "url": ""
+          }
+        ],
+        "negative_prompt": "人物换脸, 叶南变成其他人, 小女孩变成成年人, 制服变色, 蓝白慢车消失, 相机消失, 相机变成手机, 红色贝壳挂带消失, 雨披颜色错误, 地点跳切, 现代地铁站, 现代高铁, 城市高楼, 夜景, 阴雨, 武器, 血腥, 严重受伤, 奔跑撞人, 打斗升级, 武侠飞踢, 超能力, 慢动作, 卡通, 动漫, 游戏CG, 低清晰度, 画面撕裂, 可读文字, 字幕, logo, watermark",
+        "prompt_extend": false
+      }
+    },
+    "seg02_sea_dike_bridge": {
+      "id": "seg02_sea_dike_bridge",
+      "request_type": "FLF2VRequest",
+      "flf2v_request": {
+        "request_id": "seg02_sea_dike_bridge",
+        "kind": "segment_r2v",
+        "prompt": "写实电影感16:9海堤桥通道段落，承接车厢连接门打开后的强光尾帧。叶南从蓝白慢车跨上狭窄但安全的临时通道，继续护住银色胶片相机，红色贝壳挂带被海风吹起但不能消失。空间一侧是蓝白车身线条，另一侧是强反光海面、栏杆和海堤，远处少量海鸥掠过；镜头保持手持跟随和真实风感，不做危险坠落或灾难戏。叶南步伐稳定、身体略受风推，前方逐渐出现彩旗、人群和渔港节日街入口，结尾明确接到街市空间。",
+        "first_url": "",
+        "last_url": "",
+        "duration_s": 16,
+        "seed": 0,
+        "output_path": "",
+        "log_dir": "",
+        "resolution": "1920x1080",
+        "references": [
+          {
+            "role": "portrait",
+            "url": ""
+          },
+          {
+            "role": "reference",
+            "url": ""
+          },
+          {
+            "role": "scene",
+            "url": ""
+          }
+        ],
+        "negative_prompt": "人物换脸, 叶南变成其他人, 小女孩变成成年人, 制服变色, 蓝白慢车消失, 相机消失, 相机变成手机, 红色贝壳挂带消失, 雨披颜色错误, 地点跳切, 现代地铁站, 现代高铁, 城市高楼, 夜景, 阴雨, 武器, 血腥, 严重受伤, 奔跑撞人, 打斗升级, 武侠飞踢, 超能力, 慢动作, 卡通, 动漫, 游戏CG, 低清晰度, 画面撕裂, 可读文字, 字幕, logo, watermark",
+        "prompt_extend": false
+      }
+    },
+    "seg03_festival_street_search": {
+      "id": "seg03_festival_street_search",
+      "request_type": "FLF2VRequest",
+      "flf2v_request": {
+        "request_id": "seg03_festival_street_search",
+        "kind": "segment_r2v",
+        "prompt": "写实电影感16:9渔港节日街寻找段落，承接海堤桥通向街口的尾帧。地点保持鱼摊、塑料水桶、湿木箱、风车玩具、彩旗、无字灯笼和午后海面反光；人群热闹但有可穿行通道。叶南拿着银色胶片相机，红色贝壳挂带在阳光下晃动，他侧身穿过人群并朝前方呼喊，没有撞倒路人。黄色雨披小女孩在前方人群中短暂露出背影或侧脸，形成明确方向。镜头从摊位和水桶前景擦过，保持真实街市质感；结尾让小女孩在灯塔栈道方向停下回头，叶南与她形成清楚视线。",
+        "first_url": "",
+        "last_url": "",
+        "duration_s": 16,
+        "seed": 0,
+        "output_path": "",
+        "log_dir": "",
+        "resolution": "1920x1080",
+        "references": [
+          {
+            "role": "portrait",
+            "url": ""
+          },
+          {
+            "role": "reference",
+            "url": ""
+          },
+          {
+            "role": "scene",
+            "url": ""
+          }
+        ],
+        "negative_prompt": "人物换脸, 叶南变成其他人, 小女孩变成成年人, 制服变色, 蓝白慢车消失, 相机消失, 相机变成手机, 红色贝壳挂带消失, 雨披颜色错误, 地点跳切, 现代地铁站, 现代高铁, 城市高楼, 夜景, 阴雨, 武器, 血腥, 严重受伤, 奔跑撞人, 打斗升级, 武侠飞踢, 超能力, 慢动作, 卡通, 动漫, 游戏CG, 低清晰度, 画面撕裂, 可读文字, 字幕, logo, watermark",
+        "prompt_extend": false
+      }
+    },
+    "seg04_lighthouse_return": {
+      "id": "seg04_lighthouse_return",
+      "request_type": "FLF2VRequest",
+      "flf2v_request": {
+        "request_id": "seg04_lighthouse_return",
+        "kind": "segment_r2v",
+        "prompt": "写实电影感16:9温暖收束段落，承接小女孩在灯塔栈道前停下回头的尾帧。空间从热闹渔港街自然打开到白色灯塔、木质栈道、明亮海面和远处缓慢进港的渔船；光线保持夏日午后清透高亮。叶南放慢脚步，把银色胶片相机递给黄色雨披小女孩，红色贝壳挂带处在画面中心并被海风轻轻吹动。小女孩接过相机后从焦急转为安心，不需要文字解释胶片含义。结尾两人面向灯塔和海面，人物侧影安静真实，画面有情绪落点但不过度煽情。",
+        "first_url": "",
+        "last_url": "",
+        "duration_s": 16,
+        "seed": 0,
+        "output_path": "",
+        "log_dir": "",
+        "resolution": "1920x1080",
+        "references": [
+          {
+            "role": "portrait",
+            "url": ""
+          },
+          {
+            "role": "reference",
+            "url": ""
+          },
+          {
+            "role": "scene",
+            "url": ""
+          }
+        ],
+        "negative_prompt": "人物换脸, 叶南变成其他人, 小女孩变成成年人, 制服变色, 蓝白慢车消失, 相机消失, 相机变成手机, 红色贝壳挂带消失, 雨披颜色错误, 地点跳切, 现代地铁站, 现代高铁, 城市高楼, 夜景, 阴雨, 武器, 血腥, 严重受伤, 奔跑撞人, 打斗升级, 武侠飞踢, 超能力, 慢动作, 卡通, 动漫, 游戏CG, 低清晰度, 画面撕裂, 可读文字, 字幕, logo, watermark",
+        "prompt_extend": false
+      }
+    }
+  }
+}
