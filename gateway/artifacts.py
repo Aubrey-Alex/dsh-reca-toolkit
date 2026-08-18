@@ -28,6 +28,7 @@ def fallback_manifest(run_dir: Path, run_id: str) -> dict[str, Any]:
         ("summary", "run/summary.json", "application/json"),
         ("run_report", "run/run_report.json", "application/json"),
         ("events", "events.jsonl", "application/x-ndjson"),
+        ("inputs", "input_manifest.json", "application/json"),
         ("contact_sheet", "run/contact.jpg", "image/jpeg"),
     )
     artifacts = []

@@ -467,6 +467,12 @@ def _dispatch_one_image(rr: dict[str, Any], kind: str) -> str:
         if cached.startswith("http"):
             print(f"[render-skip] {rr['request_id']} cached -> {cached[:80]}", flush=True)
             return cached
+        # Local-only runs intentionally have no OSS credentials. A readable
+        # local cache is still a valid dependency for image edits and Wan
+        # requests; do not make resume depend on an unrelated publisher.
+        if Path(cached).is_file():
+            print(f"[render-skip-local] {rr['request_id']} cached -> {cached}", flush=True)
+            return cached
         new_url = _republish_local_to_oss(
             cached,
             request_id=rr["request_id"],
@@ -484,6 +490,36 @@ def _dispatch_one_image(rr: dict[str, Any], kind: str) -> str:
             f"_dispatch_one_image[{rr['request_id']}]: cached URL is a local path "
             f"({cached!r}) and re-upload to OSS failed"
         )
+    # Some OpenAI-compatible gateways expose /images/generations but do not
+    # implement /images/edits.  In that configuration, preserve continuity by
+    # carrying the resolved source anchor forward instead of issuing a request
+    # that can hang until the provider timeout.  The real image-edit path is
+    # still used by default and can be selected per provider with
+    # RECA_GPT_IMAGE_2_EDIT_MODE=api.
+    if (
+        kind == "image_edit"
+        and os.environ.get("RECA_GPT_IMAGE_2_EDIT_MODE", "api").lower()
+        in {"copy", "copy_source", "source"}
+    ):
+        source = next(
+            (str(ref.get("url")) for ref in rr.get("references", [])
+             if ref.get("role") == "source" and ref.get("url")),
+            "",
+        )
+        if source and Path(source).is_file() and rr.get("output_path"):
+            output_path = Path(str(rr["output_path"]))
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(source, output_path)
+            _save_cached_url(rr.get("output_path"), str(output_path))
+            print(
+                f"[render-copy-source] {rr['request_id']} <- {source}",
+                flush=True,
+            )
+            return str(output_path)
+        raise RuntimeError(
+            f"_dispatch_one_image[{rr['request_id']}]: copy-source mode "
+            f"requires a local source anchor, got {source!r}"
+        )
     req = ImageRequest(
         request_id=rr["request_id"], kind=kind, prompt=rr["prompt"],
         references=tuple(
@@ -495,16 +531,20 @@ def _dispatch_one_image(rr: dict[str, Any], kind: str) -> str:
     )
     result = dispatch_image(req)
     url = getattr(result, "output_url", None) or getattr(result, "output_path", None) or ""
-    if not url.startswith("http"):
+    if not url.startswith("http") and not Path(url).is_file():
         raise RuntimeError(
             f"_dispatch_one_image[{rr['request_id']}]: refusing to cache non-URL "
             f"({url!r}); OSS publish likely failed"
         )
+    if not url.startswith("http"):
+        print(f"[render-local] {rr['request_id']} -> {url}", flush=True)
     _save_cached_url(rr.get("output_path"), url)
     return url
 
 
-_REF_ROLE_PRIORITY = {"portrait": 0, "scene": 1, "reference": 2, "start": 3, "end": 4, "source": 5}
+# The source frame is the canonical continuity constraint. Keep it ahead of
+# auxiliary portraits/props when a backend imposes a reference-image cap.
+_REF_ROLE_PRIORITY = {"source": -1, "portrait": 0, "scene": 1, "reference": 2, "start": 3, "end": 4}
 
 
 def _truncate_refs(refs: list[dict[str, Any]], max_refs: int, *, label: str = "") -> list[dict[str, Any]]:
@@ -548,8 +588,14 @@ def _build_image_dag(render_plan: dict[str, Any]) -> tuple[dict[str, set[str]], 
             asset_id = r.get("asset_id")
             if asset_id and asset_id in deps:
                 ref_deps.add(asset_id)
+        source_anchor = a["image_request"].get("source_anchor")
+        if source_anchor and source_anchor in deps:
+            ref_deps.add(source_anchor)
         deps[a_id] = ref_deps
-        nodes[a_id] = (a["image_request"], "anchor_image")
+        nodes[a_id] = (
+            a["image_request"],
+            str(a["image_request"].get("render_kind") or "anchor_image"),
+        )
 
     return deps, nodes
 
@@ -558,13 +604,21 @@ def _resolve_anchor_refs(render_plan: dict[str, Any], anchor_entry: dict[str, An
     """Resolve an anchor's reference URLs from the asset pool, applying
     backend max-ref truncation. ``reference_inputs.place`` is a top-level
     ``loc_id`` (zones were retired 2026-05-17)."""
-    max_refs = for_kind("anchor_image").capabilities().max_reference_images
+    render_kind = str(anchor_entry["image_request"].get("render_kind") or "anchor_image")
+    max_refs = for_kind(render_kind).capabilities().max_reference_images
     rr = dict(anchor_entry["image_request"])
     resolved: list[dict[str, Any]] = []
     for r in rr["references"]:
-        url = asset_pool.get(r["asset_id"])
+        url = r.get("url") or asset_pool.get(r.get("asset_id", ""))
+        # Gateway inputs are commonly staged as local files. Image-edit
+        # backends need HTTP(S) references, so publish local inputs here.
+        if url and not str(url).startswith(("http://", "https://")) and Path(str(url)).is_file():
+            url = _republish_local_to_oss(
+                str(url), request_id=rr.get("request_id", "anchor"),
+                kind=render_kind, log_dir=rr.get("log_dir"),
+            ) or url
         if url:
-            resolved.append({"role": r["role"], "url": url, "asset_id": r["asset_id"]})
+            resolved.append({"role": r.get("role", "reference"), "url": url, "asset_id": r.get("asset_id", "")})
     rr["references"] = _truncate_refs(resolved, max_refs, label=rr.get("request_id", "anchor"))
     return rr
 
@@ -591,9 +645,16 @@ def _render_image_dag(render_plan: dict[str, Any], *, max_workers: int = 16) -> 
     if not nodes:
         return {}
 
-    done: dict[str, str] = {}
+    preloaded = {
+        str(node_id): str(source)
+        for node_id, source in (render_plan.get("preloaded_assets") or {}).items()
+        if source
+    }
+    done: dict[str, str] = {node_id: source for node_id, source in preloaded.items() if node_id in nodes}
     failed: dict[str, BaseException] = {}
-    pending: dict[str, set[str]] = {nid: set(ds) for nid, ds in deps.items()}
+    pending: dict[str, set[str]] = {
+        nid: set(ds) for nid, ds in deps.items() if nid not in done
+    }
     asset_pool_view: dict[str, str] = {}
 
     in_flight: dict[Future[str], str] = {}
@@ -704,7 +765,7 @@ def _build_ref_hint(names: list[str], backend_name: str) -> str:
     if backend_name == "happyhorse-1.0-r2v":
         body = "、".join(f"[Image {i+1}]{n}" for i, n in enumerate(names))
         return f"\n\n参考图说明: {body}。"
-    if backend_name in ("wan2.7-r2v", "wan2.7-i2v"):
+    if backend_name in ("wan2.7-r2v", "wan2.7-i2v", "wan3.0-video"):
         body = "、".join(f"图{i+1}={n}" for i, n in enumerate(names))
         return f"\n\n参考图说明: {body}。"
     if backend_name == "seedance-2.0-r2v":
@@ -951,15 +1012,16 @@ def _render_shot_chain(
             src = "prev_segment_tail"
         if not first_url:
             raise RuntimeError(f"[segment-trace] {sid}: NO first_url (src={src})")
-        # Wan3's HTTP backend can stage a local tail frame through DashScope's
-        # temporary OSS policy. Keep the historical URL-only guard for other
-        # providers, but let that backend receive the local path so a shot's
-        # serial tail -> next-first-frame chain remains continuous.
+        # DashScope's Wan HTTP backend and native Wan2.7 SDK both stage local
+        # reference media before submission. The native SDK performs this
+        # upload inside ``VideoSynthesis.async_call``; keep the local path here
+        # so it can preserve the original hard-first-frame contract.
         local_media_ok = False
         if not first_url.startswith("http"):
             try:
                 local_media_ok = (
-                    for_kind("segment_i2v").capabilities().backend_name == "wan3.0-video"
+                    for_kind("segment_i2v").capabilities().backend_name
+                    in {"wan3.0-video", "wan2.7-r2v", "wan2.7-i2v"}
                     and Path(first_url).is_file()
                 )
             except Exception:
@@ -974,6 +1036,12 @@ def _render_shot_chain(
         predicted_backend = for_kind("segment_r2v").capabilities().backend_name
         exclude_roles = _BACKEND_EXCLUDE_ROLES.get(predicted_backend, frozenset())
         ref_urls = _resolve_segment_refs(ri, asset_pool, exclude_roles=exclude_roles)
+        provided_refs = render_plan.get("provided_reference_images") or []
+        ref_urls.extend(
+            str(item.get("path") or item.get("url"))
+            for item in provided_refs
+            if isinstance(item, dict) and (item.get("path") or item.get("url"))
+        )
 
         # Dynamic mode decision (F6 contract):
         # mode = "i2v" if RECA_FORCE_I2V=1 OR len(ref_urls) == 0; else "r2v"
@@ -992,17 +1060,24 @@ def _render_shot_chain(
         target_caps = for_kind(f"segment_{seg_mode}").capabilities()
         target_backend = target_caps.backend_name
         ref_names = _resolved_ref_names(ri, asset_pool, portrait_names, exclude_roles=exclude_roles)
+        ref_names.extend(
+            str(item.get("name") or item.get("role") or "reference")
+            for item in provided_refs
+            if isinstance(item, dict)
+        )
         if target_caps.max_reference_images > 0 and len(ref_urls) > target_caps.max_reference_images:
             ref_urls = ref_urls[: target_caps.max_reference_images]
             ref_names = ref_names[: target_caps.max_reference_images]
         ref_hint = _build_ref_hint(ref_names, target_backend)
         prompt_with_hint = fr["prompt"] + ref_hint
         print(
-            f"[segment-trace] {sid}: refs={len(ref_urls)} duration={fr['duration_s']}s mode={seg_mode}",
+            f"[segment-trace] {sid}: refs={len(ref_urls)} "
+            f"duration={fr['duration_s']}s mode={seg_mode}",
             flush=True,
         )
 
-        req = _build_segment_request(seg, mode=seg_mode, first_url=first_url, ref_urls=ref_urls, prompt=prompt_with_hint)
+        req = _build_segment_request(seg, mode=seg_mode, first_url=first_url,
+                                     ref_urls=ref_urls, prompt=prompt_with_hint)
         result = dispatch_segment(req)
         video_url = getattr(result, "output_url", None) or getattr(result, "output_path", None) or ""
         tail_url = _extract_last_frame(video_url, output_path)
@@ -1306,6 +1381,15 @@ def _render_shot_chain(
                             current_seg, mode=seg_mode, first_url=first_url, ref_urls=ref_urls,
                             prompt=repaired_prompt,
                         )
+                        # A repair is a new paid provider submission.  The
+                        # Wan adapter persists task ids for resume, so clear
+                        # the segment cache before dispatching a repair;
+                        # otherwise a seed reroll can silently reuse the old
+                        # succeeded task and produce the identical clip.
+                        repaired_output = req2.output_path
+                        if repaired_output:
+                            Path(f"{repaired_output}.wan30.json").unlink(missing_ok=True)
+                            Path(f"{repaired_output}.url").unlink(missing_ok=True)
                         result = dispatch_segment(req2)
                         video_url = (
                             getattr(result, "output_url", None)
@@ -1614,6 +1698,7 @@ def _validate_and_repair_anchors(
     asset_pool: dict[str, str],
     params: "ValidatorParams",
     audit_meta: dict[str, Any] | None = None,
+    protected_anchor_ids: set[str] | None = None,
 ) -> dict[str, str]:
     """Per-anchor validate → branch by reason tag → repair → re-validate loop."""
     from videorlm.framework.validator.anchor import (
@@ -1631,9 +1716,11 @@ def _validate_and_repair_anchors(
     repair_root.mkdir(parents=True, exist_ok=True)
 
     out_urls: dict[str, str] = dict(anchor_urls)
+    protected_anchor_ids = protected_anchor_ids or set()
     if audit_meta is not None:
         audit_meta.setdefault("validator_errors", 0)
         audit_meta.setdefault("repairs", 0)
+        audit_meta.setdefault("protected_anchor_failures", 0)
 
     # id → {id, name, prompt} for the user-prompt description block.
     # planner.json schemas use lists of dicts; render_plan uses dicts of
@@ -1670,6 +1757,28 @@ def _validate_and_repair_anchors(
         anchor_id = anchor_entry["id"]
         if anchor_id not in out_urls or not out_urls[anchor_id]:
             return anchor_id, None
+        # In copy-source mode, later anchors are byte-identical continuity
+        # frames. Audit the first inherited frame with GPT and propagate that
+        # result down the chain; sending identical pixels repeatedly only
+        # adds provider latency and can trigger gateway long-tail timeouts.
+        image_request = anchor_entry.get("image_request") or {}
+        source_anchor = image_request.get("source_anchor")
+        if (
+            os.environ.get("RECA_AUDIT_PROPAGATE_COPIED_ANCHORS", "0") == "1"
+            and image_request.get("render_kind") == "image_edit"
+            and source_anchor
+            and source_anchor not in protected_anchor_ids
+        ):
+            if audit_meta is not None:
+                audit_meta["propagated_copied_anchors"] = int(
+                    audit_meta.get("propagated_copied_anchors", 0)
+                ) + 1
+            print(
+                f"[validator] {anchor_id} copied from {source_anchor}; "
+                "propagating prior audit result",
+                flush=True,
+            )
+            return anchor_id, out_urls[anchor_id]
         shot = render_plan["shots"][i]
         anchor_spec = next(a for a in planner["boundarys"]["boundary_anchors"] if a["id"] == anchor_id)
 
@@ -1751,6 +1860,17 @@ def _validate_and_repair_anchors(
                 return anchor_id, accepted_url
 
             if judgment["pass_or_not"] == "pass":
+                return anchor_id, accepted_url
+            if anchor_id in protected_anchor_ids:
+                if audit_meta is not None:
+                    audit_meta["protected_anchor_failures"] = int(
+                        audit_meta.get("protected_anchor_failures", 0)
+                    ) + 1
+                print(
+                    f"[validator] {anchor_id} provided input failed audit; "
+                    "preserving user-supplied first frame",
+                    flush=True,
+                )
                 return anchor_id, accepted_url
             if repairs_done >= params.max_repair_attempts:
                 return anchor_id, accepted_url
@@ -2008,6 +2128,7 @@ def run_render(
     import time as _time
     timings: dict[str, float] = {}
     out_path = Path(out_path)
+    audit_state = "audit_pending"
 
     def notify(stage: str, status: str = "running", **extra: Any) -> None:
         if state_callback is not None:
@@ -2035,16 +2156,22 @@ def run_render(
         asset_pool = {**portrait_urls, **location_urls, **prop_urls}
         audit_meta: dict[str, Any] = {}
         anchor_urls = _validate_and_repair_anchors(
-            render_plan, anchor_urls, asset_pool, validator, audit_meta
+            render_plan,
+            anchor_urls,
+            asset_pool,
+            validator,
+            audit_meta,
+            protected_anchor_ids=set(render_plan.get("protected_anchor_ids") or []),
         )
         timings["anchor_validator"] = _time.time() - t0
         _stage_log("anchor-validator", t0, anchors=len(anchor_urls))
-        if audit_meta.get("validator_errors"):
+        if audit_meta.get("validator_errors") or audit_meta.get("protected_anchor_failures"):
             anchor_audit_state = "audit_failed"
         elif audit_meta.get("repairs"):
             anchor_audit_state = "audit_repaired"
         else:
             anchor_audit_state = "audited"
+        audit_state = anchor_audit_state
         notify("validating", "done", audit_state=anchor_audit_state, audit_meta=audit_meta)
 
     # Segments + inline bridge dispatch.
@@ -2077,7 +2204,11 @@ def run_render(
         timings["bridges_wait"] = _time.time() - t0
         _stage_log("bridges-wait", t0, n=len(bridge_urls))
         if segment_validator is not None:
-            notify("validating", "done", audit_state="audited")
+            # Preserve anchor audit failures. Segment validation must not
+            # overwrite an earlier failed/protected-anchor verdict.
+            if audit_state == "audit_pending":
+                audit_state = "audited"
+            notify("validating", "done", audit_state=audit_state)
         notify("rendering", "done", video_state="rendered")
     finally:
         bridge_executor.shutdown(wait=True)

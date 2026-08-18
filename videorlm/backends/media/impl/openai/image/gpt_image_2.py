@@ -84,6 +84,9 @@ def _save_b64(b64: str, output_path: str) -> None:
 
 
 def _fetch_url(url: str) -> bytes:
+    if url and not str(url).startswith(("http://", "https://")):
+        with open(url, "rb") as f:
+            return f.read()
     rsp = httpx.get(url, timeout=120)
     rsp.raise_for_status()
     return rsp.content
@@ -170,6 +173,7 @@ class GPTImage2Backend:
         #      workaround.) The completed event still carries the final
         #      b64; we ignore partial frames.
         attempt_id = uuid.uuid4().hex
+        stream_mode = os.environ.get("RECA_GPT_IMAGE_2_STREAM", "0") == "1"
         extra_headers = {
             "X-Client-Request-Id": attempt_id,
             "Connection": "close",
@@ -179,16 +183,17 @@ class GPTImage2Backend:
             """Kick off either the T2I or I2I SSE stream, returns the
             stream iterator. Closure over ``ref_urls`` / ``size`` /
             ``request.prompt`` / ``extra_headers``."""
+            common = {
+                "model": self.MODEL_ID,
+                "prompt": request.prompt,
+                "size": size,
+                "n": 1,
+                "extra_headers": extra_headers,
+            }
+            if stream_mode:
+                common.update(stream=True, partial_images=0)
             if not ref_urls:
-                return client.images.generate(
-                    model=self.MODEL_ID,
-                    prompt=request.prompt,
-                    size=size,
-                    n=1,
-                    stream=True,
-                    partial_images=0,
-                    extra_headers=extra_headers,
-                )
+                return client.images.generate(**common)
             # Multi-image edit. Fetch all refs to bytes; OpenAI SDK takes
             # `image=` as a single file or list of (filename, bytes) tuples.
             # OpenAI /v1/images/edits 支持最多 16 张 image
@@ -207,37 +212,26 @@ class GPTImage2Backend:
             if len(images_payload) == 1:
                 img_arg = io.BytesIO(images_payload[0][1])
                 img_arg.name = images_payload[0][0]
-                return client.images.edit(
-                    model=self.MODEL_ID,
-                    image=img_arg,
-                    prompt=request.prompt,
-                    size=size,
-                    n=1,
-                    stream=True,
-                    partial_images=0,
-                    extra_headers=extra_headers,
-                )
-            return client.images.edit(
-                model=self.MODEL_ID,
-                image=images_payload,
-                prompt=request.prompt,
-                size=size,
-                n=1,
-                stream=True,
-                partial_images=0,
-                extra_headers=extra_headers,
-            )
+                common["image"] = img_arg
+            else:
+                common["image"] = images_payload
+            return client.images.edit(**common)
 
         def _do_call(api_key: str) -> str | None:
             """Pick a key (via with_key middleware), open the OpenAI client
             with it, run the stream to completion, return the final b64."""
             client = _open_client(api_key)
-            stream = _start_stream(client)
+            response = _start_stream(client)
+            if not stream_mode:
+                data = getattr(response, "data", None) or []
+                if data:
+                    return getattr(data[0], "b64_json", None)
+                return None
             # Consume the SSE stream. Final b64 lives on the *.completed
             # event; partial_images=0 means we expect exactly one such
             # event with no partials.
             b64: str | None = None
-            for event in stream:
+            for event in response:
                 etype = getattr(event, "type", "")
                 if etype in ("image_edit.completed", "image_generation.completed"):
                     b64 = getattr(event, "b64_json", None) or b64

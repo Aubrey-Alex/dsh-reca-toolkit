@@ -9,6 +9,12 @@ Use reca_create_video for a natural-language video request. Ask only for
 missing information that materially changes the result; otherwise use sensible
 cinematic defaults and start the asynchronous run.
 
+If the user provides a first-frame image or reference images, pass them through
+to reca_create_video unchanged. A first frame is authoritative: ReCA audits it
+but does not replace it with an automatically generated anchor. Reference
+images remain optional; when omitted, ReCA keeps its normal automatic asset
+generation flow.
+
 Return the run_id for long jobs and use reca_get_status for progress. Present
 the user-facing stage and progress without exposing provider implementation
 details. Report video_state and audit_state separately: a generated video is

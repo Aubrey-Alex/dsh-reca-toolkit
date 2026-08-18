@@ -25,6 +25,7 @@ from ....interface.capabilities import BackendRenderError
 from ....interface.registry import register_backend
 from ....interface.requests import BridgeRequest, SegmentRequest, VideoResult
 from ....interface.segment_backend import ProviderSpec, VideoSegmentBackendBase
+from ._r2v_prompt import HAPPYHORSE_R2V_PROMPT_TEMPLATE, prefix_r2v
 
 
 _DEFAULT_BASE_URL = "https://dashscope.aliyuncs.com/api/v1"
@@ -332,7 +333,11 @@ class Wan30VideoBackend(VideoSegmentBackendBase):
         supports_resolutions=("1280x720", "1920x1080"),
         segment_duration_range=(2.0, 15.0),
         bridge_duration_range=(2.0, 15.0),
-        max_reference_images=5,
+        # Wan3.0 R2V has no hard first_frame slot. The first frame is sent as
+        # reference_image[0], matching ReCA's HappyHorse R2V contract.
+        # Keep four total media items so the first frame plus three planner
+        # references fit the provider's conservative reference budget.
+        max_reference_images=4,
         max_prompt_chars=20000,
         concurrency_env="RECA_WAN30_WORKERS",
         default_concurrency=8,
@@ -344,23 +349,25 @@ class Wan30VideoBackend(VideoSegmentBackendBase):
     )
 
     def render_segment(self, req: SegmentRequest) -> VideoResult:
-        # The deployed ``wan3.0-video`` contract rejects a first_frame mixed
-        # with reference_image (it only permits first_frame + last_frame for
-        # bridge interpolation). Keep ReCA's continuity anchor as the hard
-        # condition and omit soft refs for normal segments; bridge requests
-        # below still use the provider-supported first/last pair.
-        refs: list[str] = []
-        media = [{"type": "first_frame", "url": req.first_url}]
-        if (
-            req.mode == "r2v"
-            and os.environ.get("RECA_WAN30_ALLOW_MIXED_MEDIA", "0").strip().lower()
-            in {"1", "true", "yes"}
-        ):
-            refs = [url for url in req.reference_image_urls if url][:5]
-            media.extend({"type": "reference_image", "url": url} for url in refs)
+        # Wan3.0 rejects first_frame mixed with reference_image. Use the
+        # HappyHorse-compatible pure-R2V mapping: reference_image[0] is the
+        # current first frame and the remaining entries are planner-selected
+        # identity/scene/prop references. The prompt makes the soft temporal
+        # role explicit because the provider has no hard first-frame slot.
+        media: list[dict[str, str]] = [{"type": "reference_image", "url": req.first_url}]
+        if req.mode == "r2v":
+            refs = [url for url in req.reference_image_urls if url]
+            media.extend(
+                {"type": "reference_image", "url": url}
+                for url in refs[: max(0, self.PROVIDER_SPEC.max_reference_images - 1)]
+            )
+            prompt = prefix_r2v(HAPPYHORSE_R2V_PROMPT_TEMPLATE, req.prompt)
+        else:
+            media = media[:1]
+            prompt = req.prompt
         try:
             provider_url = _generate(
-                request_id=req.request_id, prompt=req.prompt, media=media,
+                request_id=req.request_id, prompt=prompt, media=media,
                 duration_s=req.duration_s, seed=req.seed, output_path=req.output_path,
                 log_dir=req.log_dir, resolution=req.resolution, negative_prompt=req.negative_prompt,
             )

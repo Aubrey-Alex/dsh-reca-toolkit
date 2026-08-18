@@ -30,6 +30,25 @@ class GatewayContractTests(unittest.TestCase):
         self.assertEqual(config.style, "cinematic")
         self.assertTrue(config.enable_audit)
 
+    def test_gateway_stages_optional_first_frame_and_references(self) -> None:
+        with tempfile.TemporaryDirectory() as value:
+            root = Path(value)
+            source = root / "source.png"
+            source.write_bytes(b"png-bytes")
+            job = root / "run123"
+            job.mkdir()
+            manager = JobManager(root=Path.cwd(), runs_root=root / "runs")
+            manifest = manager._stage_input_assets(
+                job,
+                first_frame=str(source),
+                reference_image_urls=[str(source)],
+                reference_images=[{"path": str(source), "role": "character", "name": "hero"}],
+            )
+            self.assertTrue(Path(manifest["first_frame"]["path"]).is_file())
+            self.assertEqual(manifest["reference_images"][0]["role"], "character")
+            self.assertEqual(len(manifest["reference_images"]), 2)
+            self.assertTrue((job / "input_manifest.json").is_file())
+
     def test_recovery_marks_only_active_runs_interrupted(self) -> None:
         with tempfile.TemporaryDirectory() as value:
             tmp_path = Path(value)

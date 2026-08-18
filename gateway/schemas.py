@@ -67,8 +67,8 @@ def normalize_run_config(raw: dict[str, Any] | None) -> RunConfig:
     style = str(raw.get("style") or "cinematic").strip()
     aspect_ratio = str(raw.get("aspect_ratio") or "16:9").strip()
     backend = str(raw.get("backend") or "wan").strip()
-    if backend not in {"wan", "happyhorse", "ltx"}:
-        raise ValueError("backend must be wan, happyhorse, or ltx")
+    if backend not in {"wan", "wan27", "happyhorse", "ltx"}:
+        raise ValueError("backend must be wan, wan27, happyhorse, or ltx")
     return RunConfig(
         duration_s=duration_s,
         resolution=resolution,

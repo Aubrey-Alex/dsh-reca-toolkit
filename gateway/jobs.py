@@ -4,6 +4,7 @@ import json
 import os
 import re
 import signal
+import shutil
 import subprocess
 import sys
 import threading
@@ -47,6 +48,11 @@ SAFE_OPTION_KEYS = {
     "aspect_ratio",
     "enable_audit",
 }
+
+_INPUT_MANIFEST_NAME = "input_manifest.json"
+_MAX_REFERENCE_IMAGES = 16
+_MAX_INPUT_BYTES = 50 * 1024 * 1024
+_IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp"}
 
 _STAGE_PATTERNS = (
     (re.compile(r"plan_skeleton.*attempt 1"), "plan_skeleton", "running"),
@@ -94,6 +100,36 @@ def _atomic_json(path: Path, value: dict[str, Any]) -> None:
     tmp.replace(path)
 
 
+def _asset_source(value: Any) -> tuple[str, str, str]:
+    """Return source, role, and display name without exposing raw payloads."""
+    if isinstance(value, str):
+        return value.strip(), "reference", ""
+    if not isinstance(value, dict):
+        raise ValueError("image input must be a string or object")
+    source = str(value.get("path") or value.get("url") or value.get("asset_id") or "").strip()
+    role = str(value.get("role") or "reference").strip() or "reference"
+    name = str(value.get("name") or "").strip()
+    return source, role, name
+
+
+def _stage_one_asset(source: str, destination: Path, *, label: str) -> str:
+    """Copy a local image into the run, or preserve an HTTPS image URL."""
+    if not source:
+        raise ValueError(f"{label} is empty")
+    if source.startswith("https://") or source.startswith("http://"):
+        return source
+    path = Path(source).expanduser().resolve()
+    if not path.is_file():
+        raise ValueError(f"{label} path was not found")
+    if path.suffix.lower() not in _IMAGE_SUFFIXES:
+        raise ValueError(f"{label} must be a PNG, JPEG, or WebP image")
+    if path.stat().st_size > _MAX_INPUT_BYTES:
+        raise ValueError(f"{label} exceeds the {_MAX_INPUT_BYTES // (1024 * 1024)} MiB limit")
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(path, destination)
+    return str(destination)
+
+
 class JobManager:
     """Run one unchanged ReCA smoke pipeline per isolated child process."""
 
@@ -109,6 +145,45 @@ class JobManager:
 
     def _job_dir(self, run_id: str) -> Path:
         return self.runs_root / run_id
+
+    def _stage_input_assets(
+        self,
+        job_dir: Path,
+        first_frame: Any = None,
+        reference_images: Any = None,
+        reference_image_urls: Any = None,
+    ) -> dict[str, Any]:
+        """Materialize optional user images without putting bytes in model context."""
+        refs = reference_images if reference_images not in (None, "") else []
+        if not isinstance(refs, list):
+            raise ValueError("reference_images must be an array")
+        legacy_refs = reference_image_urls if reference_image_urls not in (None, "") else []
+        if not isinstance(legacy_refs, list):
+            raise ValueError("reference_image_urls must be an array")
+        refs = [*refs, *legacy_refs]
+        if len(refs) > _MAX_REFERENCE_IMAGES:
+            raise ValueError(f"reference_images cannot exceed {_MAX_REFERENCE_IMAGES} images")
+        input_dir = job_dir / "run" / "inputs"
+        manifest: dict[str, Any] = {"version": 1, "first_frame": None, "reference_images": []}
+        if first_frame not in (None, ""):
+            source, role, name = _asset_source(first_frame)
+            suffix = Path(source).suffix.lower()
+            if not source.startswith(("http://", "https://")) and suffix not in _IMAGE_SUFFIXES:
+                raise ValueError("first_frame must be a PNG, JPEG, or WebP image")
+            destination = input_dir / f"first_frame{suffix}"
+            path = _stage_one_asset(source, destination, label="first_frame") if not source.startswith(("http://", "https://")) else source
+            manifest["first_frame"] = {"path": path, "role": role or "anchor", "name": name}
+        for index, item in enumerate(refs):
+            source, role, name = _asset_source(item)
+            suffix = Path(source).suffix.lower() if not source.startswith(("http://", "https://")) else ".url"
+            if suffix not in _IMAGE_SUFFIXES and suffix != ".url":
+                raise ValueError(f"reference_images[{index}] must be a PNG, JPEG, or WebP image")
+            destination = input_dir / f"reference_{index:02d}{suffix}"
+            path = _stage_one_asset(source, destination, label=f"reference_images[{index}]") if not source.startswith(("http://", "https://")) else source
+            manifest["reference_images"].append({"path": path, "role": role, "name": name})
+        if manifest["first_frame"] or manifest["reference_images"]:
+            _atomic_json(job_dir / _INPUT_MANIFEST_NAME, manifest)
+        return manifest
 
     def _state_path(self, run_id: str) -> Path:
         return self._job_dir(run_id) / "state.json"
@@ -161,6 +236,22 @@ class JobManager:
             job_dir.mkdir(parents=True, exist_ok=False)
         (job_dir / "story.txt").write_text(story, encoding="utf-8")
 
+        input_manifest = self._stage_input_assets(
+            job_dir,
+            request.get("first_frame") or request.get("first_url"),
+            request.get("reference_images"),
+            request.get("reference_image_urls"),
+        )
+        if resume_run_id and not (input_manifest["first_frame"] or input_manifest["reference_images"]):
+            previous_config_path = job_dir / "run_config.json"
+            try:
+                previous_config = json.loads(previous_config_path.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                previous_config = {}
+            previous_manifest = previous_config.get("input_manifest")
+            if previous_manifest:
+                input_manifest = {"version": 1, "manifest_path": previous_manifest}
+
         config = normalize_run_config(raw_options)
         options = {key: raw_options[key] for key in SAFE_OPTION_KEYS if key in raw_options}
         options.update(config.to_dict())
@@ -171,11 +262,18 @@ class JobManager:
         # Keep provider credentials out of the HTTP protocol. They are loaded
         # from the process environment / ignored .env file by ReCA itself.
         safe_request = {"story": story, "options": options}
+        if input_manifest.get("first_frame") or input_manifest.get("reference_images"):
+            safe_request["inputs"] = input_manifest
         (job_dir / "request.json").write_text(
             json.dumps(safe_request, ensure_ascii=False, indent=2), encoding="utf-8"
         )
+        director_config = {"run_id": run_id, **config.to_dict()}
+        if input_manifest.get("first_frame") or input_manifest.get("reference_images"):
+            director_config["input_manifest"] = str(job_dir / _INPUT_MANIFEST_NAME)
+        elif input_manifest.get("manifest_path"):
+            director_config["input_manifest"] = input_manifest["manifest_path"]
         (job_dir / "run_config.json").write_text(
-            json.dumps({"run_id": run_id, **config.to_dict()}, ensure_ascii=False, indent=2),
+            json.dumps(director_config, ensure_ascii=False, indent=2),
             encoding="utf-8",
         )
 

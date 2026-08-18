@@ -88,15 +88,15 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--seed", type=int, default=0,
                    help="render plan seed; written into summary.json so the run is "
                         "reproducible (default 0)")
-    p.add_argument("--backend", choices=["wan", "happyhorse", "ltx"],
+    p.add_argument("--backend", choices=["wan", "wan27", "happyhorse", "ltx"],
                    default="happyhorse",
-                   help="video backend branch: wan / happyhorse / ltx")
+                   help="video backend branch: wan (Wan3.0) / wan27 / happyhorse / ltx")
     p.add_argument("--force-i2v", action="store_true",
                    help="force every segment to use the i2v backend mode (drops extra refs)")
     p.add_argument("--video-resolution", default="1920x1080",
                    help="render plan video_resolution. happyhorse supports 1280x720 + "
                         "1920x1080; wan2.7 supports 1280x720 only — use 1280x720 when "
-                        "--backend wan or render will raise BackendRenderError. "
+                        "--backend wan27 or render will raise BackendRenderError. "
                         "ltx-2.3 advertises 1280x720 / 1920x1080 but generates at the "
                         "nearest 64-aligned height (704/1088) and ffmpeg-pads/crops "
                         "back to exact target so concat stays clean.")
@@ -114,10 +114,29 @@ def load_env() -> None:
         value = v.strip().strip('"').strip("'")
         file_values[key] = value
         os.environ.setdefault(key, value)
+    # Gateway workers inherit the long-lived gateway environment. Keep the
+    # checked-in local .env authoritative for the planner model so changing a
+    # provider does not require restarting the gateway process.
+    if file_values.get("RECA_SP_MODEL"):
+        os.environ["RECA_SP_MODEL"] = file_values["RECA_SP_MODEL"]
+    if file_values.get("RECA_GPT_MODEL"):
+        os.environ["RECA_GPT_MODEL"] = file_values["RECA_GPT_MODEL"]
+    # The DSW host may inject a chat-only OPENAI_BASE_URL. The internal GPT
+    # credential belongs to the Routify OpenAI-compatible gateway instead;
+    # derive its base from the configured Responses endpoint for image calls.
+    if file_values.get("RECA_GPT_RESPONSES_URL") and not file_values.get("OPENAI_BASE_URL"):
+        responses_url = file_values["RECA_GPT_RESPONSES_URL"].rstrip("/")
+        if responses_url.endswith("/responses"):
+            os.environ["OPENAI_BASE_URL"] = responses_url[: -len("/responses")]
     # The working AVM deployment uses the DashScope OpenAI-compatible image
     # route for ReCA's image backends. Keep this fallback local to the
     # smoke/gateway entry point so the public source never contains a provider
     # credential and an explicit OPENAI_* override still wins.
+    # The internal GPT credential is shared by the Responses auditor and the
+    # OpenAI-compatible gpt-image-2 backend. Prefer it over the DashScope
+    # fallback when no generic OpenAI key was explicitly configured.
+    if not os.environ.get("OPENAI_API_KEY") and os.environ.get("RECA_GPT_API_KEY"):
+        os.environ["OPENAI_API_KEY"] = os.environ["RECA_GPT_API_KEY"]
     if not os.environ.get("OPENAI_API_KEY") and os.environ.get("DASHSCOPE_API_KEY"):
         os.environ["OPENAI_API_KEY"] = os.environ["DASHSCOPE_API_KEY"]
         # DSW images can inject an unrelated OPENAI_BASE_URL globally. When
@@ -138,6 +157,74 @@ def setup_path() -> None:
     sys.path.insert(0, str(CONFIGS_DIR))
 
 
+def _load_director_inputs(director_config: dict) -> dict:
+    """Load optional user assets staged by the Gateway."""
+    manifest_path = director_config.get("input_manifest")
+    if not manifest_path:
+        return {}
+    try:
+        value = json.loads(Path(str(manifest_path)).read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        raise SystemExit(f"invalid director input manifest: {exc}") from exc
+    return value if isinstance(value, dict) else {}
+
+
+def _apply_director_inputs(render_plan: dict, inputs: dict) -> None:
+    """Apply user assets while preserving ReCA's planner and asset DAG.
+
+    A supplied first frame is the canonical visual source for the run. The
+    first boundary anchor is preloaded from it; every later anchor is rendered
+    serially with GPT Image2 image-edit from the previous anchor. This keeps
+    the original no-input behavior unchanged while preventing independent
+    T2I renders from drifting in identity, lighting, and background.
+    """
+    first_frame = inputs.get("first_frame")
+    if isinstance(first_frame, dict):
+        first_source = first_frame.get("path") or first_frame.get("url")
+        anchors = render_plan.get("boundary_anchors") or []
+        if first_source and anchors:
+            render_plan.setdefault("preloaded_assets", {})[anchors[0]["id"]] = str(first_source)
+            render_plan.setdefault("protected_anchor_ids", []).append(anchors[0]["id"])
+            render_plan["canonical_reference_image"] = str(first_source)
+
+            # Later anchors are edits of the preceding anchor, not fresh
+            # text-to-image compositions. The source anchor is also a DAG
+            # dependency so the image renders cannot race independently.
+            for previous, current in zip(anchors, anchors[1:]):
+                image_request = current.get("image_request") or {}
+                image_request["render_kind"] = "image_edit"
+                image_request["source_anchor"] = previous["id"]
+                refs = image_request.setdefault("references", [])
+                if not any(
+                    r.get("role") == "source" and r.get("asset_id") == previous["id"]
+                    for r in refs
+                ):
+                    refs.insert(0, {
+                        "role": "source", "url": "", "asset_id": previous["id"],
+                    })
+                current["image_request"] = image_request
+
+    refs = [item for item in inputs.get("reference_images", []) if isinstance(item, dict)]
+    if not refs:
+        return
+    render_plan["provided_reference_images"] = refs
+    # Anchor generation still happens when only reference images are supplied.
+    # Preserve the direct URLs/paths so the image backend can use them without
+    # requiring the planner to invent asset IDs for user-owned inputs.
+    for anchor in render_plan.get("boundary_anchors") or []:
+        image_request = anchor.get("image_request") or {}
+        existing = image_request.setdefault("references", [])
+        existing.extend(
+            {
+                "role": str(item.get("role") or "reference"),
+                "url": str(item.get("path") or item.get("url")),
+                "asset_id": "",
+            }
+            for item in refs
+            if item.get("path") or item.get("url")
+        )
+
+
 def setup_render_defaults(backend: str = "happyhorse") -> None:
     """Set the RECA_RENDER_BACKEND_* env vars consumed by dispatch_*.
 
@@ -150,21 +237,30 @@ def setup_render_defaults(backend: str = "happyhorse") -> None:
       - Image kinds (portrait / anchor_image / image_edit) route to
         ``gpt-image-2`` (not ``-pro``) — that's the registry default.
     """
-    # Wan runs already depend on DashScope credentials. Use the working
-    # DashScope image backend for anchor assets by default; operators with a
-    # separate OpenAI Images gateway can set RECA_IMAGE_BACKEND=gpt-image-2.
+    # GPT Image2 is the canonical image backend for product runs. Wan remains
+    # the video backend; operators can explicitly select a different image
+    # provider with RECA_IMAGE_BACKEND.
     image_backend = os.environ.get(
         "RECA_IMAGE_BACKEND",
-        "wan2.7-image-pro" if backend == "wan" else "gpt-image-2",
+        "gpt-image-2",
     ).strip()
     os.environ.setdefault("RECA_RENDER_BACKEND_PORTRAIT", image_backend)
     os.environ.setdefault("RECA_RENDER_BACKEND_ANCHOR_IMAGE", image_backend)
     os.environ.setdefault("RECA_RENDER_BACKEND_IMAGE_EDIT", image_backend)
     if backend == "wan":
         wan_backend = os.environ.get("RECA_WAN30_BACKEND", "wan3.0-video").strip()
+        # Keep ReCA's original Wan routing and replace only the provider model.
+        # Segments remain first-frame anchored R2V/I2V; bridges remain FLF.
         os.environ.setdefault("RECA_RENDER_BACKEND_SEGMENT_R2V", wan_backend)
         os.environ.setdefault("RECA_RENDER_BACKEND_SEGMENT_I2V", wan_backend)
         os.environ.setdefault("RECA_RENDER_BACKEND_BRIDGE", wan_backend)
+    elif backend == "wan27":
+        # Preserve the original ReCA contract: every segment starts from a
+        # hard first_frame (the previous segment's tail), while character,
+        # location, and prop assets remain soft reference_image inputs.
+        os.environ.setdefault("RECA_RENDER_BACKEND_SEGMENT_R2V", "wan2.7-r2v")
+        os.environ.setdefault("RECA_RENDER_BACKEND_SEGMENT_I2V", "wan2.7-r2v")
+        os.environ.setdefault("RECA_RENDER_BACKEND_BRIDGE", "wan2.7-i2v")
     elif backend == "ltx":
         # LTX-2.3 local-diffusion: same backend handles i2v / r2v / bridge.
         # bridge uses the keyframe-interpolation pipeline; segments use
@@ -272,10 +368,17 @@ def main() -> None:
                 provider="openai_responses",
                 system_prompt=VALIDATOR_SYSTEM_PROMPT,
                 temperature=0.2,
+                max_tokens=int(os.environ.get("RECA_GPT_AUDIT_MAX_TOKENS", "2048")),
                 role=ANCHOR_VALIDATOR_ROLE,
                 max_concurrency=ANCHOR_VALIDATOR_POOL_SIZE,
-                request_timeout_s=900.0,
+                request_timeout_s=float(os.environ.get("RECA_GPT_AUDIT_TIMEOUT_S", "45")),
                 inline_images=True,
+            )
+            print(
+                f"[{args.label}] anchor-audit provider={validator_cfg.provider or 'compat'} "
+                f"model={validator_cfg.model} timeout={validator_cfg.request_timeout_s}s "
+                f"minimal={os.environ.get('RECA_AUDIT_MINIMAL_CONTEXT', '0')}",
+                flush=True,
             )
         else:
             api_key_v = os.environ.get("OPENAI_API_KEY", "")
@@ -409,6 +512,7 @@ def main() -> None:
         except (OSError, ValueError) as exc:
             raise SystemExit(f"[{tag}] invalid --director-config: {exc}") from exc
     story = story_path.read_text(encoding="utf-8").strip()
+    director_inputs = _load_director_inputs(director_config)
     planner_story = story
     constraints = []
     if director_config.get("duration_s"):
@@ -653,6 +757,7 @@ def main() -> None:
                 planner, out_dir / "run", seed=args.seed,
                 video_resolution=args.video_resolution,
             )
+            _apply_director_inputs(render_plan, director_inputs)
             (out_dir / "render_plan.json").write_text(json.dumps(render_plan, ensure_ascii=False, indent=2))
             director_state("planning", "done", segment_count=len(segments))
             print(f"[{tag}] plan_segments_all OK; segments={len(segments)}", flush=True)

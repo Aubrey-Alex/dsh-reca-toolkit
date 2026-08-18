@@ -62,6 +62,7 @@ def write_artifact_manifest(out_dir: Path, *, run_id: str = "") -> Path:
         ("render_plan", "render_plan.json", "application/json"),
         ("audit", "run/audit.json", "application/json"),
         ("events", "events.jsonl", "application/x-ndjson"),
+        ("inputs", "input_manifest.json", "application/json"),
         ("summary", "run/summary.json", "application/json"),
         ("run_report", "run/run_report.json", "application/json"),
         ("contact_sheet", "run/contact.jpg", "image/jpeg"),

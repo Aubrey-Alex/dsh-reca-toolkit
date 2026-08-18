@@ -13,6 +13,7 @@ pipeline glue level.
 from __future__ import annotations
 
 import json
+import os
 import re
 from pathlib import Path
 from typing import Any, Callable
@@ -247,10 +248,18 @@ def make_validator_from_segment_planner_state(
     from videorlm.framework._common.fork import sub_conversation_with_system_swap
     from .prompts import VALIDATOR_SYSTEM_PROMPT
 
-    new_state = sub_conversation_with_system_swap(
-        segment_planner_state, VALIDATOR_SYSTEM_PROMPT,
-        inherited_msg_count=4,
-    )
+    # The full segment-planner transcript is useful for offline diagnosis but
+    # makes Responses requests unnecessarily large and slow on gateways with
+    # strict context/proxy limits. Production Director audits only need the
+    # current anchor prompt and state, which are supplied in the next user
+    # turn. Opt into the compact request shape for that path.
+    if os.environ.get("RECA_AUDIT_MINIMAL_CONTEXT", "0") == "1":
+        new_state = {"messages": []}
+    else:
+        new_state = sub_conversation_with_system_swap(
+            segment_planner_state, VALIDATOR_SYSTEM_PROMPT,
+            inherited_msg_count=4,
+        )
     if getattr(validator_config, "provider", "") == "openai_responses":
         return OpenAIResponsesAgent(validator_config, state=new_state)
     return QwenAgent(validator_config, state=new_state)

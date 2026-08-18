@@ -7,9 +7,15 @@
 
 # Runtime state and generated media
 .dsh_runs/
+.dsh_active_run_id
+.dsh_gateway.pid
 byok_jobs/
 outputs/
 videorlm/outputs/
+batch-assets/
+demo-assets/
+demo/assets/
+demo/data/replay_manifest.json
 *.mp4
 *.mov
 *.webm

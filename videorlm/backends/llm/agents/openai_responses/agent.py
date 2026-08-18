@@ -8,6 +8,10 @@ the framework; this module only translates messages and parses the response.
 from __future__ import annotations
 
 import os
+import random
+import time
+from contextlib import contextmanager
+from pathlib import Path
 from typing import Any
 
 import httpx
@@ -19,7 +23,6 @@ from ..base import (
     AgentMessage,
     AgentState,
     append_messages,
-    slot,
 )
 
 
@@ -29,6 +32,43 @@ def _text_content(text: str, *, role: str = "user") -> list[dict[str, str]]:
     # the API as an assistant content type).
     content_type = "output_text" if role == "assistant" else "input_text"
     return [{"type": content_type, "text": text}]
+
+
+@contextmanager
+def _global_request_lock():
+    """Serialize Responses calls across ReCA worker processes.
+
+    The Gateway can launch several ReCA runs at once, so an in-process
+    semaphore is not enough for a single upstream GPT quota.  ``flock`` is
+    advisory and automatically released if a worker dies.
+    """
+    lock_path = os.environ.get("RECA_GPT_GLOBAL_LOCK_PATH", "/tmp/reca-gpt-responses.lock")
+    try:
+        import fcntl
+    except ImportError:
+        # Keep the client usable on platforms without POSIX file locking.
+        yield
+        return
+
+    handle = None
+    try:
+        path = Path(lock_path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        handle = path.open("a+")
+        fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+    except OSError:
+        if handle is not None:
+            handle.close()
+        yield
+        return
+
+    try:
+        yield
+    finally:
+        try:
+            fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+        finally:
+            handle.close()
 
 
 class OpenAIResponsesAgent(Agent):
@@ -107,22 +147,54 @@ class OpenAIResponsesAgent(Agent):
 
         timeout_s = float(getattr(self._config, "request_timeout_s", 900.0) or 900.0)
         timeout = httpx.Timeout(timeout_s, connect=min(30.0, timeout_s))
+        retry_statuses = {408, 429, 500, 502, 503, 504}
         try:
-            response = httpx.post(
-                self._endpoint(),
-                headers={
-                    "Authorization": f"Bearer {api_key}",
-                    "Content-Type": "application/json",
-                },
-                json=body,
-                timeout=timeout,
-            )
-        except Exception as exc:  # noqa: BLE001
-            raise AgentError(f"Responses API request failed: {type(exc).__name__}: {exc}") from exc
-        if response.status_code >= 400:
-            raise AgentError(
-                f"Responses API HTTP {response.status_code}: {response.text[:1000]}"
-            )
+            max_retries = max(0, int(os.environ.get("RECA_GPT_MAX_RETRIES", "3")))
+        except ValueError:
+            max_retries = 3
+        try:
+            retry_base_s = max(0.1, float(os.environ.get("RECA_GPT_RETRY_BASE_S", "2")))
+        except ValueError:
+            retry_base_s = 2.0
+
+        response = None
+        last_error: Exception | None = None
+        for attempt in range(max_retries + 1):
+            try:
+                # Lock each upstream attempt, including requests from other
+                # Gateway child processes, so one key is never burst-loaded.
+                with _global_request_lock():
+                    response = httpx.post(
+                        self._endpoint(),
+                        headers={
+                            "Authorization": f"Bearer {api_key}",
+                            "Content-Type": "application/json",
+                        },
+                        json=body,
+                        timeout=timeout,
+                    )
+            except (httpx.TimeoutException, httpx.NetworkError) as exc:
+                response = None
+                last_error = exc
+                if attempt >= max_retries:
+                    raise AgentError(
+                        f"Responses API request failed after {attempt + 1} attempts: "
+                        f"{type(exc).__name__}: {exc}"
+                    ) from exc
+            else:
+                if response.status_code < 400:
+                    break
+                if response.status_code not in retry_statuses or attempt >= max_retries:
+                    raise AgentError(
+                        f"Responses API HTTP {response.status_code} after {attempt + 1} attempts: "
+                        f"{response.text[:1000]}"
+                    )
+                last_error = AgentError(f"HTTP {response.status_code}")
+            # Jitter prevents several independently resumed runs from
+            # retrying the upstream at the exact same instant.
+            time.sleep(retry_base_s * (2**attempt) + random.uniform(0, 0.5))
+        if response is None:
+            raise AgentError(f"Responses API request failed: {last_error}") from last_error
         try:
             data = response.json()
         except ValueError as exc:
@@ -133,7 +205,13 @@ class OpenAIResponsesAgent(Agent):
         parts: list[str] = []
         for item in data.get("output", []) or []:
             for content in item.get("content", []) or []:
-                value = content.get("text")
+                # Routify/OpenAI Responses variants use either `text` or
+                # `output_text` on message content items. Some also wrap the
+                # value in an object; accept all three without treating a
+                # completed response as an empty-output failure.
+                value = content.get("text") or content.get("output_text")
+                if isinstance(value, dict):
+                    value = value.get("text") or value.get("value")
                 if isinstance(value, str):
                     parts.append(value)
         result = "".join(parts)
@@ -154,8 +232,9 @@ class OpenAIResponsesAgent(Agent):
         return reply
 
     def _prompt(self, text: str) -> str:
-        with slot(self.capabilities().agent_name, self.capabilities().max_concurrency):
-            return self._complete(text)
+        # Agent.prompt() owns the per-role semaphore. Acquiring it again here
+        # deadlocks when max_concurrency workers call the public method.
+        return self._complete(text)
 
     def _prompt_with_images(self, text: str, image_urls: list[str]) -> str:
         content: list[dict[str, Any]] = [{"type": "input_text", "text": text}]
@@ -165,8 +244,8 @@ class OpenAIResponsesAgent(Agent):
                     from ..openai_compat.agent import _to_inline_data_uri
                     url = _to_inline_data_uri(url)
                 content.append({"type": "input_image", "image_url": url})
-        with slot(self.capabilities().agent_name, self.capabilities().max_concurrency):
-            return self._complete(text, content)
+        # Agent.prompt_with_images() already owns the per-role semaphore.
+        return self._complete(text, content)
 
     def _fork_impl(self, cloned_state: AgentState) -> "OpenAIResponsesAgent":
         forked = type(self)(self._config, state=cloned_state)

@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ReCA Director | Recorded Run</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <main class="shell">
+    <header class="topbar">
+      <div class="brand"><span class="brand-mark">R</span><span>ReCA Director</span><small>DSH PRODUCT DEMO</small></div>
+      <div class="recording"><i></i> Recorded replay <span>REAL DSH + ReCA RUN</span></div>
+    </header>
+
+    <section class="hero">
+      <div class="hero-copy">
+        <p class="eyebrow">DeepSeek Harness Skill</p>
+        <h1>From one story<br><em>to a coherent film.</em></h1>
+        <p class="lede">A real Director run, replayed from the user prompt through planning, generation, visual audit and final delivery.</p>
+        <div class="run-chip"><span class="pulse"></span><span id="run-id">loading run</span><b id="run-state">LOADING</b></div>
+      </div>
+      <div class="hero-media">
+        <video id="final-video" controls playsinline preload="metadata" poster="assets/first-frame.png"></video>
+        <div class="media-caption"><span>FINAL DELIVERY</span><strong id="video-meta">Preparing artifact</strong></div>
+      </div>
+    </section>
+
+    <section class="workspace">
+      <div class="section-head"><div><p class="eyebrow">Recorded execution</p><h2>The run, in context</h2></div><div class="metrics" id="metrics"></div></div>
+      <div class="execution-grid">
+        <article class="panel conversation"><div class="panel-label"><span class="dot orange"></span>DSH / USER SESSION</div><div class="user-bubble" id="story"></div><div class="tool-call"><span class="tool-icon">↗</span><div><small>TOOL INVOCATION</small><strong>reca_create_video</strong><p>Director run started with a natural-language story and an uploaded first frame.</p></div><span class="tool-status">DONE</span></div></article>
+        <article class="panel context"><div class="panel-label"><span class="dot blue"></span>RECA CONTEXT TRACK</div><div class="timeline" id="timeline"></div></article>
+      </div>
+    </section>
+
+    <section class="shots-section"><div class="section-head"><div><p class="eyebrow">What ReCA planned</p><h2>Story structure, made visible</h2></div><span class="section-note">Generated internally from the user story</span></div><div class="shots" id="shots"></div></section>
+
+    <section class="audit-section"><div class="audit-card"><div class="audit-orbit"><span>VISION<br>AUDIT</span></div><div><p class="eyebrow">Continuity checkpoint</p><h2 id="audit-title">Visual audit</h2><p id="audit-copy">ReCA checks identity, scene, props and motion between generated segments before delivery.</p></div><div class="audit-state" id="audit-state">PENDING</div></div><div class="artifact-panel"><div class="panel-label">RUN ARTIFACTS</div><div id="artifacts" class="artifacts"></div></div></section>
+
+    <footer><span>ReCA Director</span><span>Recorded replay of a real DSH + ReCA Director run</span><span id="footer-run"></span></footer>
+  </main>
+  <script src="app.js"></script>
+</body>
+</html>
