@@ -1,0 +1,9 @@
+{
+  "_meta": {
+    "note": "Routify gpt-image-2 is one shared key. Burst >2 concurrent trips WAF 403."
+  },
+  "models": {
+    "gpt-image-2": {"interval_s": 3.0, "max_parallel": 2},
+    "gpt-image-2-pro": {"interval_s": 3.0, "max_parallel": 2}
+  }
+}

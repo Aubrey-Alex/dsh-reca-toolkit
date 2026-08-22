@@ -1,11 +1,15 @@
 const DEFAULT_GATEWAY_URL = "http://127.0.0.1:8787";
 
 export class RecaClient {
-  constructor(baseUrl = process.env.RECA_GATEWAY_URL || DEFAULT_GATEWAY_URL) {
-    this.baseUrl = String(baseUrl).replace(/\/+$/, "");
+  constructor(baseUrl, runtime = null) {
+    this.runtime = runtime;
+    this.baseUrl = String(baseUrl || process.env.RECA_GATEWAY_URL || DEFAULT_GATEWAY_URL).replace(/\/+$/, "");
   }
 
   async request(path, options = {}) {
+    if (this.runtime) {
+      this.baseUrl = String(await this.runtime.ensure()).replace(/\/+$/, "");
+    }
     const response = await fetch(`${this.baseUrl}${path}`, {
       ...options,
       headers: {
@@ -21,7 +25,7 @@ export class RecaClient {
       payload = { raw: text };
     }
     if (!response.ok) {
-      const message = payload?.error || `Gateway returned HTTP ${response.status}`;
+      const message = payload?.error || `ReCA runtime returned HTTP ${response.status}`;
       throw new Error(message);
     }
     return payload;

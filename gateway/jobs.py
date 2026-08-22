@@ -4,12 +4,10 @@ import json
 import os
 import re
 import signal
-import shutil
 import subprocess
 import sys
 import threading
 import time
-import uuid
 from pathlib import Path
 from typing import Any
 
@@ -47,12 +45,11 @@ SAFE_OPTION_KEYS = {
     "style",
     "aspect_ratio",
     "enable_audit",
+    "run_id",
+    "label",
 }
 
-_INPUT_MANIFEST_NAME = "input_manifest.json"
-_MAX_REFERENCE_IMAGES = 16
-_MAX_INPUT_BYTES = 50 * 1024 * 1024
-_IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp"}
+RUN_ID_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,62}$", re.IGNORECASE)
 
 _STAGE_PATTERNS = (
     (re.compile(r"plan_skeleton.*attempt 1"), "plan_skeleton", "running"),
@@ -80,6 +77,35 @@ _SECRET_PATTERNS = (
 )
 
 
+def slugify_run_id(raw: str) -> str:
+    text = (raw or "").strip().lower().replace("·", "_").replace(" ", "_")
+    text = re.sub(r"[^a-z0-9_-]+", "_", text)
+    text = re.sub(r"[_-]{2,}", "_", text).strip("_-")
+    if not text:
+        return ""
+    if text[0].isdigit():
+        text = f"run_{text}"
+    return text[:48]
+
+
+def story_run_slug(story: str) -> str:
+    first = (story or "").strip().splitlines()[0] if (story or "").strip() else ""
+    return slugify_run_id(first) or "film"
+
+
+def allocate_run_id(runs_root: Path, base: str) -> str:
+    base = slugify_run_id(base) or "film"
+    candidate = base
+    serial = 2
+    while (runs_root / candidate).exists():
+        suffix = f"_{serial}"
+        candidate = f"{base[: 63 - len(suffix)]}{suffix}"
+        serial += 1
+        if serial > 99:
+            raise RuntimeError(f"too many run folders named {base}")
+    return candidate
+
+
 def _redact_log(value: str) -> str:
     result = value
     for pattern in _SECRET_PATTERNS:
@@ -100,36 +126,6 @@ def _atomic_json(path: Path, value: dict[str, Any]) -> None:
     tmp.replace(path)
 
 
-def _asset_source(value: Any) -> tuple[str, str, str]:
-    """Return source, role, and display name without exposing raw payloads."""
-    if isinstance(value, str):
-        return value.strip(), "reference", ""
-    if not isinstance(value, dict):
-        raise ValueError("image input must be a string or object")
-    source = str(value.get("path") or value.get("url") or value.get("asset_id") or "").strip()
-    role = str(value.get("role") or "reference").strip() or "reference"
-    name = str(value.get("name") or "").strip()
-    return source, role, name
-
-
-def _stage_one_asset(source: str, destination: Path, *, label: str) -> str:
-    """Copy a local image into the run, or preserve an HTTPS image URL."""
-    if not source:
-        raise ValueError(f"{label} is empty")
-    if source.startswith("https://") or source.startswith("http://"):
-        return source
-    path = Path(source).expanduser().resolve()
-    if not path.is_file():
-        raise ValueError(f"{label} path was not found")
-    if path.suffix.lower() not in _IMAGE_SUFFIXES:
-        raise ValueError(f"{label} must be a PNG, JPEG, or WebP image")
-    if path.stat().st_size > _MAX_INPUT_BYTES:
-        raise ValueError(f"{label} exceeds the {_MAX_INPUT_BYTES // (1024 * 1024)} MiB limit")
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(path, destination)
-    return str(destination)
-
-
 class JobManager:
     """Run one unchanged ReCA smoke pipeline per isolated child process."""
 
@@ -145,45 +141,6 @@ class JobManager:
 
     def _job_dir(self, run_id: str) -> Path:
         return self.runs_root / run_id
-
-    def _stage_input_assets(
-        self,
-        job_dir: Path,
-        first_frame: Any = None,
-        reference_images: Any = None,
-        reference_image_urls: Any = None,
-    ) -> dict[str, Any]:
-        """Materialize optional user images without putting bytes in model context."""
-        refs = reference_images if reference_images not in (None, "") else []
-        if not isinstance(refs, list):
-            raise ValueError("reference_images must be an array")
-        legacy_refs = reference_image_urls if reference_image_urls not in (None, "") else []
-        if not isinstance(legacy_refs, list):
-            raise ValueError("reference_image_urls must be an array")
-        refs = [*refs, *legacy_refs]
-        if len(refs) > _MAX_REFERENCE_IMAGES:
-            raise ValueError(f"reference_images cannot exceed {_MAX_REFERENCE_IMAGES} images")
-        input_dir = job_dir / "run" / "inputs"
-        manifest: dict[str, Any] = {"version": 1, "first_frame": None, "reference_images": []}
-        if first_frame not in (None, ""):
-            source, role, name = _asset_source(first_frame)
-            suffix = Path(source).suffix.lower()
-            if not source.startswith(("http://", "https://")) and suffix not in _IMAGE_SUFFIXES:
-                raise ValueError("first_frame must be a PNG, JPEG, or WebP image")
-            destination = input_dir / f"first_frame{suffix}"
-            path = _stage_one_asset(source, destination, label="first_frame") if not source.startswith(("http://", "https://")) else source
-            manifest["first_frame"] = {"path": path, "role": role or "anchor", "name": name}
-        for index, item in enumerate(refs):
-            source, role, name = _asset_source(item)
-            suffix = Path(source).suffix.lower() if not source.startswith(("http://", "https://")) else ".url"
-            if suffix not in _IMAGE_SUFFIXES and suffix != ".url":
-                raise ValueError(f"reference_images[{index}] must be a PNG, JPEG, or WebP image")
-            destination = input_dir / f"reference_{index:02d}{suffix}"
-            path = _stage_one_asset(source, destination, label=f"reference_images[{index}]") if not source.startswith(("http://", "https://")) else source
-            manifest["reference_images"].append({"path": path, "role": role, "name": name})
-        if manifest["first_frame"] or manifest["reference_images"]:
-            _atomic_json(job_dir / _INPUT_MANIFEST_NAME, manifest)
-        return manifest
 
     def _state_path(self, run_id: str) -> Path:
         return self._job_dir(run_id) / "state.json"
@@ -220,7 +177,7 @@ class JobManager:
         raw_resume_id = raw_options.get("resume_run_id")
         resume_run_id = str(raw_resume_id).strip() if raw_resume_id else ""
         if resume_run_id:
-            if not re.fullmatch(r"[a-f0-9]{12}", resume_run_id):
+            if not RUN_ID_RE.fullmatch(resume_run_id):
                 raise ValueError("resume_run_id is invalid")
             previous = self._read_state(resume_run_id)
             if previous is None:
@@ -231,26 +188,13 @@ class JobManager:
             job_dir = self._job_dir(run_id)
             job_dir.mkdir(parents=True, exist_ok=True)
         else:
-            run_id = uuid.uuid4().hex[:12]
+            requested = slugify_run_id(
+                str(raw_options.get("run_id") or raw_options.get("label") or "")
+            ) or story_run_slug(story)
+            run_id = allocate_run_id(self.runs_root, requested)
             job_dir = self._job_dir(run_id)
             job_dir.mkdir(parents=True, exist_ok=False)
         (job_dir / "story.txt").write_text(story, encoding="utf-8")
-
-        input_manifest = self._stage_input_assets(
-            job_dir,
-            request.get("first_frame") or request.get("first_url"),
-            request.get("reference_images"),
-            request.get("reference_image_urls"),
-        )
-        if resume_run_id and not (input_manifest["first_frame"] or input_manifest["reference_images"]):
-            previous_config_path = job_dir / "run_config.json"
-            try:
-                previous_config = json.loads(previous_config_path.read_text(encoding="utf-8"))
-            except (OSError, ValueError):
-                previous_config = {}
-            previous_manifest = previous_config.get("input_manifest")
-            if previous_manifest:
-                input_manifest = {"version": 1, "manifest_path": previous_manifest}
 
         config = normalize_run_config(raw_options)
         options = {key: raw_options[key] for key in SAFE_OPTION_KEYS if key in raw_options}
@@ -262,18 +206,11 @@ class JobManager:
         # Keep provider credentials out of the HTTP protocol. They are loaded
         # from the process environment / ignored .env file by ReCA itself.
         safe_request = {"story": story, "options": options}
-        if input_manifest.get("first_frame") or input_manifest.get("reference_images"):
-            safe_request["inputs"] = input_manifest
         (job_dir / "request.json").write_text(
             json.dumps(safe_request, ensure_ascii=False, indent=2), encoding="utf-8"
         )
-        director_config = {"run_id": run_id, **config.to_dict()}
-        if input_manifest.get("first_frame") or input_manifest.get("reference_images"):
-            director_config["input_manifest"] = str(job_dir / _INPUT_MANIFEST_NAME)
-        elif input_manifest.get("manifest_path"):
-            director_config["input_manifest"] = input_manifest["manifest_path"]
         (job_dir / "run_config.json").write_text(
-            json.dumps(director_config, ensure_ascii=False, indent=2),
+            json.dumps({"run_id": run_id, **config.to_dict()}, ensure_ascii=False, indent=2),
             encoding="utf-8",
         )
 

@@ -309,6 +309,9 @@ def _generate(*, request_id: str, prompt: str, media: list[dict[str, str]], dura
     except (OSError, ValueError):
         state = {}
     task_id = state.get("task_id") if isinstance(state, dict) else None
+    prior_status = str((state or {}).get("status") or "").lower()
+    if prior_status in {"failed", "failure", "error", "canceled", "cancelled"}:
+        task_id = None
     if not isinstance(task_id, str) or not task_id:
         created = _json_request("POST", _url(os.environ.get("RECA_WAN30_SUBMIT_PATH", _CREATE_PATH)), payload=payload)
         task_id = _task_id(created)
@@ -316,6 +319,12 @@ def _generate(*, request_id: str, prompt: str, media: list[dict[str, str]], dura
         state_path.write_text(json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8")
     final = _poll(task_id)
     if _status(final) not in {"succeeded", "success", "completed"}:
+        # Sticky task_id on a FAILED job makes every retry poll the same
+        # dead DashScope task (elapsed=0s). Drop it so the next attempt submits.
+        try:
+            state_path.unlink()
+        except OSError:
+            pass
         raise RuntimeError(f"Wan 3.0 task {task_id} ended with status={_status(final)!r}: {final}")
     video_url = _video_url(final)
     if not video_url:

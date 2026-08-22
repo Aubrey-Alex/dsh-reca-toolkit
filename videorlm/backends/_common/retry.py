@@ -38,10 +38,21 @@ class RetryPolicy:
     transient_msg_substrings: frozenset[str] = field(default_factory=frozenset)
 
 
+_NON_TRANSIENT_MARKERS = (
+    "safety system",
+    "moderation_blocked",
+    "safety_violations",
+    "content_policy",
+    "content policy",
+)
+
+
 def _is_transient(exc: BaseException, policy: RetryPolicy) -> bool:
     if any(isinstance(exc, cls) for cls in policy.transient_errors):
         return True
     msg = f"{type(exc).__name__} {str(exc)}".lower()
+    if any(s in msg for s in _NON_TRANSIENT_MARKERS):
+        return False
     return any(marker.lower() in msg for marker in policy.transient_msg_substrings)
 
 
@@ -110,6 +121,12 @@ def retry_until_exhausted(
             logger.info(
                 "[retry] backend=%s transient %s attempt %d/%d; backoff %.1fs",
                 backend_name, type(exc).__name__, attempt, max_attempts, delay,
+            )
+            print(
+                f"[retry] backend={backend_name} transient "
+                f"{type(exc).__name__}: {str(exc)[:400]} "
+                f"attempt {attempt}/{max_attempts}; backoff {delay:.1f}s",
+                flush=True,
             )
             trace_event(
                 "retry", "transient_backoff",

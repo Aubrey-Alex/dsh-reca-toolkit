@@ -61,7 +61,10 @@ class GatewayHttpLifecycleTests(unittest.TestCase):
             try:
                 with urlopen(base + "/health") as response:
                     self.assertEqual(response.status, 200)
-                    self.assertTrue(json.loads(response.read())["ok"])
+                    health = json.loads(response.read())
+                    self.assertTrue(health["ok"])
+                    self.assertEqual(health["service"], "reca-gateway")
+                    self.assertTrue(health["repo_root"])
 
                 request = Request(
                     base + "/v1/runs",

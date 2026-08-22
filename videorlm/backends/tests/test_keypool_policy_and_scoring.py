@@ -364,7 +364,7 @@ def test_pick_load_factor_dominates_when_load_skew_exceeds_error_gap():
 
 @pytest.mark.parametrize("msg,expected", [
     ("HTTP 401 Unauthorized",              "auth_invalid"),
-    ("403 Forbidden",                      "auth_invalid"),
+    ("403 Forbidden",                      "rate_limit"),
     ("InvalidApiKey",                      "auth_invalid"),
     ("DailyQuota exceeded for sk-xxx",     "daily_quota"),
     ("MonthlyQuota reached",               "daily_quota"),
@@ -380,6 +380,7 @@ def test_pick_load_factor_dominates_when_load_skew_exceeds_error_gap():
     ("502 Bad Gateway",                    "network"),
     ("504 Gateway Timeout",                "network"),
     ("Some weird ass exception",           "other"),
+    ("Error code: 400 moderation_blocked safety_violations=[sexual] req_b7b71a6f42964757", "other"),
 ])
 def test_classify_error_taxonomy(msg, expected):
     assert classify_error(RuntimeError(msg)) == expected, \

@@ -67,7 +67,7 @@ _TRANSIENT_MARKERS = frozenset({
     "ratelimit", "rate limit", "throttling", "throttled",
     "datainspectionfailed", "content filter", "concurrentlimit",
     "timeout", "temporarily unavailable", "503", "502", "429",
-    "ratequota",
+    "ratequota", "403", "524", "504", "connection", "overloaded",
 })
 
 
@@ -76,8 +76,11 @@ def _make_policy(caps: BackendCapabilities) -> RetryPolicy:
         max_attempts=max(1, int(caps.max_retries) + 1),
         backoff_base_s=float(caps.retry_backoff_base_s),
         backoff_cap_s=float(caps.retry_backoff_max_s),
+        # BackendRenderError is the wrapper for every image failure, including
+        # Azure moderation 400s. Do not treat the class name as transient.
         transient_msg_substrings=_TRANSIENT_MARKERS.union(
             marker.lower() for marker in caps.retryable_error_names
+            if marker.lower() != "backendrendererror"
         ),
     )
 

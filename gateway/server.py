@@ -61,7 +61,14 @@ class GatewayHandler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:
         path = unquote(urlparse(self.path).path)
         if path == "/health":
-            return self._send_json(HTTPStatus.OK, {"ok": True, "service": "reca-gateway"})
+            return self._send_json(
+                HTTPStatus.OK,
+                {
+                    "ok": True,
+                    "service": "reca-gateway",
+                    "repo_root": str(Path(__file__).resolve().parents[1]),
+                },
+            )
         if path == "/v1/runs":
             return self._send_json(HTTPStatus.OK, {"runs": self.manager.list_runs()})
 

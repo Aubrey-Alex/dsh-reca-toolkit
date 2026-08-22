@@ -4,10 +4,10 @@ ReCA Director 是运行在 DeepSeek Harness 上的长视频创作 Skill。用户
 
 ## 0.4.0 更新
 
-- DSH、Gateway 和 ReCA 全链路支持可选首帧与具名参考图。
 - GPT Image 2 默认负责人物、场景、anchor 和图片修复。
 - Wan3.0 使用与实际接口媒体组合兼容的纯 R2V 连续生成路由。
 - GPT Responses 审计支持跨 Gateway 子进程限流、重试和紧凑上下文。
+- DSH 插件会按需拉起本仓库的本地 runtime，对话里不需要用户再开 Gateway。
 - 新增由真实运行产物构建、不会公开付费 API 的静态回放 Demo 模板。
 
 ## 运行结构
@@ -24,19 +24,19 @@ DSH 不负责拆分镜头或直接调用 provider。Gateway 只管理进程、�
 
 ## 安装
 
+在仓库根目录：
+
 ```bash
 bash scripts/install.sh
-# 编辑 .env，填入自己的 provider 配置
+# 编辑 .env，填入 planner / 图像 / 视频密钥
 bash scripts/doctor.sh
-bash scripts/start-gateway.sh
-```
-
-在安装了 DSH 的环境中：
-
-```bash
 dsh plugin --profile web add "file:$PWD/dsh-plugin"
 dsh web
 ```
+
+之后只在 DeepSeek Harness 里描述故事。Skill 会调用 `reca_create_video`、
+轮询 `reca_get_status`，再用 `reca_get_artifact` 取回成片。插件自己拉起本地
+runtime。`bash scripts/start-gateway.sh` 只给不走 DSH 插件的 HTTP 客户端用。
 
 DSH 对话模型配置可直接复制
 [`configs/dsh-settings.example.yaml`](configs/dsh-settings.example.yaml) 到
@@ -51,7 +51,13 @@ DSH 对话模型配置可直接复制
 
 每次运行分别返回 Gateway 状态、ReCA 阶段、`video_state`、`audit_state` 和 artifact manifest。生成成功不代表审计成功，审计状态会明确返回 `audited`、`audit_skipped`、`audit_failed` 或 `audit_repaired`。
 
-`reca_create_video` 除文字故事外还支持可选的 `first_frame` 和 `reference_images`。提供首帧时，它会直接作为第一个镜头的起始 anchor；参考图会进入 anchor 规划，并按照 ReCA 的 segment contract 转发到视频段。Wan3.0 只适配 provider 输入，不改变 ReCA 的 planner 和串行尾帧链：I2V 将当前帧作为唯一参考图；R2V 将当前帧放在 `reference_image[0]`，后面最多附加三张 planner 选择的人物、场景或道具参考图，并用 R2V 前缀明确要求从第一张图开始。Bridge 仍使用真实首尾帧。由于 Wan3.0 不支持把硬首帧和额外参考图组合提交，R2V 的开始约束属于软约束。没有提供图片时，ReCA 继续自动生成角色、场景和 anchor。
+`reca_create_video` 接受故事文本以及 `duration`、`resolution`、`style`、
+`aspect_ratio`、`backend`、`enable_audit` 和 `seed`。默认分辨率是 `1280x720`。
+Wan3.0 只适配 provider 输入，不改变 ReCA 的 planner 和串行尾帧链：I2V 将当前
+帧作为唯一参考图；R2V 将当前帧放在 `reference_image[0]`，后面最多附加三张
+planner 选择的人物、场景或道具参考图，并用 R2V 前缀明确要求从第一张图开始。
+Bridge 仍使用真实首尾帧。由于 Wan3.0 不支持把硬首帧和额外参考图组合提交，
+R2V 的开始约束属于软约束。
 
 ## 真实运行回放 Demo
 

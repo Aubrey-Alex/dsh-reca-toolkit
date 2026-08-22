@@ -178,13 +178,18 @@ def _apply_director_inputs(render_plan: dict, inputs: dict) -> None:
     the original no-input behavior unchanged while preventing independent
     T2I renders from drifting in identity, lighting, and background.
     """
+    first_source = None
     first_frame = inputs.get("first_frame")
     if isinstance(first_frame, dict):
         first_source = first_frame.get("path") or first_frame.get("url")
         anchors = render_plan.get("boundary_anchors") or []
         if first_source and anchors:
-            render_plan.setdefault("preloaded_assets", {})[anchors[0]["id"]] = str(first_source)
-            render_plan.setdefault("protected_anchor_ids", []).append(anchors[0]["id"])
+            pre = render_plan.setdefault("preloaded_assets", {})
+            protected = render_plan.setdefault("protected_anchor_ids", [])
+            for anchor in anchors:
+                pre[anchor["id"]] = str(first_source)
+                if anchor["id"] not in protected:
+                    protected.append(anchor["id"])
             render_plan["canonical_reference_image"] = str(first_source)
 
             # Later anchors are edits of the preceding anchor, not fresh
@@ -205,24 +210,39 @@ def _apply_director_inputs(render_plan: dict, inputs: dict) -> None:
                 current["image_request"] = image_request
 
     refs = [item for item in inputs.get("reference_images", []) if isinstance(item, dict)]
-    if not refs:
-        return
-    render_plan["provided_reference_images"] = refs
-    # Anchor generation still happens when only reference images are supplied.
-    # Preserve the direct URLs/paths so the image backend can use them without
-    # requiring the planner to invent asset IDs for user-owned inputs.
-    for anchor in render_plan.get("boundary_anchors") or []:
-        image_request = anchor.get("image_request") or {}
-        existing = image_request.setdefault("references", [])
-        existing.extend(
-            {
-                "role": str(item.get("role") or "reference"),
-                "url": str(item.get("path") or item.get("url")),
-                "asset_id": "",
-            }
-            for item in refs
-            if item.get("path") or item.get("url")
-        )
+    if refs:
+        render_plan["provided_reference_images"] = refs
+        # Anchor generation still happens when only reference images are supplied.
+        # Preserve the direct URLs/paths so the image backend can use them without
+        # requiring the planner to invent asset IDs for user-owned inputs.
+        for anchor in render_plan.get("boundary_anchors") or []:
+            image_request = anchor.get("image_request") or {}
+            existing = image_request.setdefault("references", [])
+            existing.extend(
+                {
+                    "role": str(item.get("role") or "reference"),
+                    "url": str(item.get("path") or item.get("url")),
+                    "asset_id": "",
+                }
+                for item in refs
+                if item.get("path") or item.get("url")
+            )
+
+    # Azure often blocks swimsuit T2I even when the same still is allowed as
+    # a first-frame / I2I reference. Preload portrait+location from user stills
+    # so the DAG is not stuck behind failed text-to-image nodes.
+    pre = render_plan.setdefault("preloaded_assets", {})
+    portrait_ids = list((render_plan.get("portrait_plan") or {}).keys())
+    location_ids = list((render_plan.get("location_plan") or {}).keys())
+    portrait_src = None
+    if refs:
+        portrait_src = refs[0].get("path") or refs[0].get("url")
+    if not portrait_src:
+        portrait_src = first_source
+    if portrait_src and portrait_ids:
+        pre.setdefault(str(portrait_ids[0]), str(portrait_src))
+    if first_source and location_ids:
+        pre.setdefault(str(location_ids[0]), str(first_source))
 
 
 def setup_render_defaults(backend: str = "happyhorse") -> None:

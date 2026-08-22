@@ -9,6 +9,7 @@
 .dsh_runs/
 .dsh_active_run_id
 .dsh_gateway.pid
+dsh-plugin/.repo-root
 byok_jobs/
 outputs/
 videorlm/outputs/

@@ -483,7 +483,7 @@ def classify_error(exc: BaseException) -> str:
     wrong-duration cooldowns.
 
     Kind taxonomy mirrors a typical gateway failover-loop classification:
-      - ``auth_invalid``: 401 / 403 / "invalid api key" — permanent
+      - ``auth_invalid``: invalid api key / 401 — permanent (not generic 403)
       - ``daily_quota``: DailyQuota / MonthlyQuota — permanent
       - ``tps_throttle``: AllocationQuota / qps / tps / tpm — short fixed
       - ``rate_limit``: 429 / Throttling / RateLimit / RateQuota — exponential
@@ -492,11 +492,31 @@ def classify_error(exc: BaseException) -> str:
       - ``other``: catch-all — no cooldown
     """
     msg = str(exc).lower()
-    # auth: check before rate_limit so "Unauthorized: rate exceeded" doesn't
-    # mis-classify (real strings can mention both).
-    if any(s in msg for s in ("invalidapikey", "unauthor", "forbidden",
-                              "401", "403")):
+    # Azure/Routify image moderation is a 400 with request IDs that often
+    # contain hex digits like "429". Classify it before numeric status
+    # heuristics so we do not cooldown the only OpenAI key for 60–300s.
+    if any(s in msg for s in (
+        "moderation_blocked",
+        "safety_violations",
+        "rejected by the safety system",
+        "image_generation_user_error",
+    )):
+        return "other"
+    # Only real credential failures are permanent. Generic HTTP 403 from
+    # Routify/WAF/content filters must not burn the only key for the process.
+    if any(s in msg for s in (
+        "invalid api key",
+        "invalidapikey",
+        "incorrect api key",
+        "invalid_api_key",
+    )):
         return "auth_invalid"
+    if "401" in msg and any(s in msg for s in ("unauthor", "authentication")):
+        return "auth_invalid"
+    if "524" in msg:
+        return "network"
+    if "403" in msg or "forbidden" in msg:
+        return "rate_limit"
     if any(s in msg for s in ("dailyquota", "monthlyquota")):
         return "daily_quota"
     # TPS / per-second rate cap: distinct from true daily quota in name
@@ -506,7 +526,8 @@ def classify_error(exc: BaseException) -> str:
         return "tps_throttle"
     # True 429 / rate-limit: keep the exponential-backoff kind name.
     if any(s in msg for s in ("ratequota", "ratelimit", "throttling",
-                              "rate limit", "rate_limit", "429",
+                              "rate limit", "rate_limit",
+                              "error code: 429", "http 429",
                               "too many requests")):
         return "rate_limit"
     if any(s in msg for s in ("modelcapacity", "model_capacity_exhausted",

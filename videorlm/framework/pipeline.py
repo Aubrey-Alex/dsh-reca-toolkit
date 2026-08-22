@@ -1897,11 +1897,19 @@ def _validate_and_repair_anchors(
                         )
                     break
                 except Exception as e:
+                    err = str(e)
                     print(
                         f"[validator] {anchor_id} repair render_try {render_try}/{REPAIR_RENDER_TRIES} "
-                        f"FAILED ({type(e).__name__}: {str(e)[:120]})",
+                        f"FAILED ({type(e).__name__}: {err[:120]})",
                         flush=True,
                     )
+                    if any(s in err.lower() for s in (
+                        "moderation_blocked",
+                        "safety_violations",
+                        "rejected by the safety system",
+                    )):
+                        new_url = None
+                        break
                     if render_try >= REPAIR_RENDER_TRIES:
                         new_url = None
                         break

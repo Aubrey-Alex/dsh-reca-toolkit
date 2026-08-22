@@ -119,6 +119,11 @@ def with_key(
         raise
     except BaseException as exc:  # noqa: BLE001
         error_kind = classify_error(exc)
+        print(
+            f"[with_key] {provider} kind={error_kind} "
+            f"{type(exc).__name__}: {str(exc)[:400]}",
+            flush=True,
+        )
         raise
     finally:
         pool.release(key, error_kind=error_kind, cooldown_s=cooldown_s)

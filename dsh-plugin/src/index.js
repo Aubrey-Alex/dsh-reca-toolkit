@@ -1,5 +1,6 @@
 import { defineTool } from "@deepseek-ai/dsh-tools";
 import { RecaClient } from "./client.js";
+import { RecaRuntime } from "./runtime.js";
 import { renderJson } from "./renderers/json.js";
 import { registerDirectorSkill } from "./skill.js";
 import { registerCancelRun } from "./tools/cancel-run.js";
@@ -49,7 +50,14 @@ export async function apply(ctx, config = {}) {
   if (!ctx?.skills || typeof ctx.skills.register !== "function") {
     throw new Error("dsh-reca-toolkit requires the DSH skills service");
   }
-  const client = new RecaClient(config.gatewayUrl);
+  const runtime = new RecaRuntime({
+    host: config.gatewayHost,
+    port: config.gatewayPort,
+  });
+  const client = new RecaClient(config.gatewayUrl, runtime);
+  runtime.ensure().catch((err) => {
+    if (ctx.logger?.warn) ctx.logger.warn("%s runtime: %s", name, err.message);
+  });
   const disposers = [
     registerCreateVideo(ctx, client),
     registerGetStatus(ctx, client),
@@ -63,7 +71,10 @@ export async function apply(ctx, config = {}) {
   ];
   disposers.push(ctx.skills.register(registerDirectorSkill()));
   if (ctx.logger?.info) ctx.logger.info("%s ready: ReCA Director tools are available", name);
-  return () => disposers.forEach((dispose) => {
-    if (typeof dispose === "function") dispose();
-  });
+  return () => {
+    runtime.stopOwned();
+    disposers.forEach((dispose) => {
+      if (typeof dispose === "function") dispose();
+    });
+  };
 }

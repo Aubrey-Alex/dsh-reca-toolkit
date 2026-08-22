@@ -1,7 +1,9 @@
 # Troubleshooting
 
-If DSH cannot see the tools, check that the Gateway is running and reinstall
-the local plugin with `bash scripts/install_dsh_plugin.sh`.
+If DSH cannot see the tools, add the plugin once with
+`dsh plugin --profile web add "file:$PWD/dsh-plugin"` and reopen DSH Web.
+The plugin starts this repository's runtime by itself. Do not ask the user to
+launch a Gateway.
 
 If a run is `interrupted`, inspect its status and call `reca_resume`; do not
 submit a second run manually because Wan tasks may already be paid jobs.

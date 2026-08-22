@@ -71,7 +71,13 @@ def _open_client(api_key: str | None = None):
     # retry_until_exhausted be the *only* retry layer, and each framework
     # attempt mints a fresh X-Client-Request-Id below to break sticky
     # routing.
-    return OpenAI(api_key=api_key, base_url=base_url, max_retries=0)
+    timeout_s = float(os.environ.get("RECA_GPT_IMAGE_2_TIMEOUT_S", "180"))
+    return OpenAI(
+        api_key=api_key,
+        base_url=base_url,
+        max_retries=0,
+        timeout=timeout_s,
+    )
 
 
 def _save_b64(b64: str, output_path: str) -> None:
@@ -98,6 +104,117 @@ def _normalize_size(size: str | None) -> str:
     if not size:
         return "1024x1024"
     return str(size).replace("*", "x")
+
+
+# Azure rejects explicit desire / wet-cling wording. Fashion-register
+# rewrites (晚装、女模、时尚杂志机位) MUST stay on already-female prompts.
+# Applying them globally made locks, towers, and male gods into magazine women.
+_ALWAYS_SAFETY_REPLACEMENTS: tuple[tuple[str, str], ...] = (
+    ("湿身", "发梢带水光"),
+    ("湿贴身体", "合身剪裁"),
+    ("裸露", "着装完整"),
+    ("透视", "面料不透明"),
+    ("wet clinging", "fitted clothing"),
+    ("sheer wet", "opaque fabric"),
+    ("lingerie", "clothing"),
+    ("sexy", "tasteful"),
+    ("sensual", "tasteful"),
+    ("nude", "fully clothed"),
+)
+_FASHION_SAFETY_REPLACEMENTS: tuple[tuple[str, str], ...] = (
+    ("性感", "高级女性美"),
+    ("魅惑", "温柔有故事感"),
+    ("挑逗", "优雅"),
+    ("诱惑", "自信"),
+    ("火辣", "时尚表现力"),
+    ("情趣", "高级晚装"),
+    ("暧昧", "私密而克制的旅馆氛围"),
+    ("被水浸湿后更贴身体曲线", "真丝吊带晚装合身剪裁，面料有柔和光泽"),
+    ("湿贴大腿", "裙摆轻盈"),
+    ("湿贴在锁骨", "长发披在肩侧"),
+    ("湿发贴在锁骨", "长发披在肩侧"),
+    ("湿发贴在脸颊和颈侧", "黑长发自然垂落"),
+    ("湿发贴在背上", "黑长发自然垂落"),
+    ("湿发贴在脸颊", "黑长发"),
+    ("湿黑长发", "黑长发"),
+    ("湿发", "长发"),
+    ("湿布贴着身体", "白色浴衣合身得体"),
+    ("湿布贴着皮肤", "浴衣面料轻覆肩臂"),
+    ("湿布质感", "棉麻浴衣质感"),
+    ("面料薄而贴身", "真丝合身剪裁，有光泽"),
+    ("面料薄、贴身", "真丝合身剪裁，有光泽"),
+    ("贴紧身体", "合身剪裁"),
+    ("紧贴身体", "合身剪裁"),
+    ("半敞的白色浴衣", "白色浴衣合身，领口自然"),
+    ("浴衣半敞", "浴衣领口自然"),
+    ("白色浴衣半敞", "白色浴衣合身，领口自然"),
+    ("肩带滑下一边", "细肩带时装剪裁"),
+    ("肩带滑落", "细肩带保持在肩上"),
+    ("水面齐胸", "泳池在身后虚化"),
+    ("半身浸在水中", "站在池边石沿"),
+    ("热气遮住下半身", "热气在水面升腾"),
+    ("肩部以上露出水面", "坐在岩汤木缘，浴衣合身得体"),
+    ("一颗水珠停在锁骨凹陷处", "肩颈线条与真丝细肩带"),
+    ("水珠停在锁骨", "肩颈线条"),
+    ("水珠从肩部滑落", "发梢带水光"),
+    ("水珠沿身体曲线滑落", "发梢带水光"),
+    ("勾勒身体曲线", "凸显健康丰腴的自然曲线"),
+    ("裙摆扬起露出大腿", "裙摆被风轻轻扬起，时装动态"),
+    ("湿裙贴紧", "真丝晚装合身垂坠"),
+    ("湿裙", "真丝晚装"),
+    ("睡裙", "吊带晚装"),
+    ("胸大", "上半身丰腴"),
+    ("翘臀", "体态圆润匀称"),
+    ("低机位仰拍", "平视略低的时尚杂志机位"),
+    ("低角度仰拍", "平视略低的时尚杂志机位"),
+)
+_NEUTRAL_SAFETY_SUFFIX = (
+    " Tasteful, no nudity, no child."
+)
+_EMPTY_SCENE_LOCK = (
+    " No people in this image. Landscape or object only."
+)
+_FEMALE_MARKERS = (
+    "女性", "女人", "女主角", "女侠", "女郎", "她身着", "旗袍", "晚装",
+    "吊带", "丝袜", "woman", "girl", "female",
+)
+
+
+def _looks_female_fashion(prompt: str) -> bool:
+    text = prompt or ""
+    lowered = text.lower()
+    return any(
+        (token in lowered) if token.isascii() else (token in text)
+        for token in _FEMALE_MARKERS
+    )
+
+
+def _apply_replacements(text: str, table: tuple[tuple[str, str], ...]) -> str:
+    for src, dst in table:
+        text = text.replace(src, dst)
+    return text
+
+
+def soften_image_prompt(prompt: str) -> str:
+    """Safety pass. Fashion-register rewrites only if the prompt is already female."""
+    text = prompt or ""
+    text = _apply_replacements(text, _ALWAYS_SAFETY_REPLACEMENTS)
+    if _looks_female_fashion(prompt or ""):
+        text = _apply_replacements(text, _FASHION_SAFETY_REPLACEMENTS)
+    if _NEUTRAL_SAFETY_SUFFIX.strip() not in text:
+        text = text.rstrip() + _NEUTRAL_SAFETY_SUFFIX
+    return text
+
+
+def prepare_gpt_image_prompt(request: ImageRequest) -> str:
+    """gpt-image-2 has no negative_prompt field; bake constraints into the prompt."""
+    text = soften_image_prompt(request.prompt or "")
+    if request.kind in {"location", "prop"}:
+        text += _EMPTY_SCENE_LOCK
+    negative = (request.negative_prompt or "").strip()
+    if negative:
+        text += f" Avoid also: {negative}."
+    return text
 
 
 class GPTImage2Backend:
@@ -156,6 +273,7 @@ class GPTImage2Backend:
             )
         ref_urls = [r.url for r in request.references if r.url]
         size = _normalize_size(request.resolution)
+        prompt = prepare_gpt_image_prompt(request)
 
         # Sticky-shard breaker. Three layered techniques against
         # gateway/Cloudflare 524 long-tail (root cause: same request body +
@@ -173,7 +291,9 @@ class GPTImage2Backend:
         #      workaround.) The completed event still carries the final
         #      b64; we ignore partial frames.
         attempt_id = uuid.uuid4().hex
-        stream_mode = os.environ.get("RECA_GPT_IMAGE_2_STREAM", "0") == "1"
+        response_format = os.environ.get("RECA_GPT_IMAGE_2_RESPONSE_FORMAT", "").strip().lower()
+        url_mode = response_format == "url"
+        stream_mode = os.environ.get("RECA_GPT_IMAGE_2_STREAM", "0") == "1" and not url_mode
         extra_headers = {
             "X-Client-Request-Id": attempt_id,
             "Connection": "close",
@@ -185,11 +305,13 @@ class GPTImage2Backend:
             ``request.prompt`` / ``extra_headers``."""
             common = {
                 "model": self.MODEL_ID,
-                "prompt": request.prompt,
+                "prompt": prompt,
                 "size": size,
                 "n": 1,
                 "extra_headers": extra_headers,
             }
+            if url_mode:
+                common["response_format"] = "url"
             if stream_mode:
                 common.update(stream=True, partial_images=0)
             if not ref_urls:
@@ -225,6 +347,8 @@ class GPTImage2Backend:
             if not stream_mode:
                 data = getattr(response, "data", None) or []
                 if data:
+                    if url_mode:
+                        return getattr(data[0], "url", None)
                     return getattr(data[0], "b64_json", None)
                 return None
             # Consume the SSE stream. Final b64 lives on the *.completed
@@ -248,7 +372,7 @@ class GPTImage2Backend:
             # interval + max_parallel=8). Without ``model=`` only the
             # KeyPool layer + caps semaphore would gate; the JSON limits
             # would be metadata only.
-            b64 = with_key("openai", _do_call, model=self.MODEL_ID)
+            image_payload = with_key("openai", _do_call, model=self.MODEL_ID)
         except Exception as e:
             raise BackendRenderError(
                 f"{self.NAME}.render({request.request_id}): "
@@ -256,23 +380,30 @@ class GPTImage2Backend:
                 f"(x_client_request_id={attempt_id})"
             ) from e
 
-        if not b64:
+        if not image_payload:
             raise BackendRenderError(
                 f"{self.NAME}.render({request.request_id}): "
-                f"stream completed without b64_json "
+                f"response completed without image payload "
                 f"(x_client_request_id={attempt_id})"
             )
-        _save_b64(b64, request.output_path)
 
-        # Optional OSS upload so downstream wan/happyhorse calls can use the
-        # generated image as a ref. Returns None if OSS env not configured;
-        # caller falls back to output_path (local-only) in that case.
-        public_url = _oss_upload_file(
-            request.output_path,
-            prefix=f"{self.NAME}/{request.kind}",
-            request_id=request.request_id,
-            log_dir=request.log_dir,
-        )
+        if url_mode:
+            raw = _fetch_url(image_payload)
+            os.makedirs(os.path.dirname(request.output_path) or ".", exist_ok=True)
+            with open(request.output_path, "wb") as f:
+                f.write(raw)
+            public_url = image_payload
+        else:
+            _save_b64(image_payload, request.output_path)
+            public_url = _oss_upload_file(
+                request.output_path,
+                prefix=f"{self.NAME}/{request.kind}",
+                request_id=request.request_id,
+                log_dir=request.log_dir,
+            )
+
+        # URL mode is useful on gateways that provide their own signed image
+        # delivery URL; otherwise retain ReCA's existing OSS publication path.
 
         return ImageResult(
             request_id=request.request_id,

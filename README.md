@@ -6,14 +6,14 @@ This repository packages ReCA as ReCA Director, a long-video creation Skill for 
 
 ## What's new in 0.4.0
 
-- Optional first-frame and named reference-image inputs across DSH, Gateway,
-  and the ReCA run configuration.
 - GPT Image 2 as the default portrait, location, anchor, and repair-image
   backend, including local-reference support.
 - Wan3.0 pure-R2V continuity routing compatible with the media combinations
   accepted by the deployed API.
 - Bounded, retryable GPT Responses visual audits across concurrent Gateway
   processes.
+- The DSH plugin starts this repository's local runtime when needed, so the
+  chat does not ask the user to launch a Gateway.
 - A static recorded-run Demo template built from redacted ReCA artifacts,
   without exposing provider APIs to visitors.
 
@@ -39,19 +39,22 @@ The DSH plugin registers `reca_create_video`, `reca_get_status`, `reca_cancel`, 
 
 ## Local setup
 
+From the repository root:
+
 ```bash
 bash scripts/install.sh
-# Fill the provider values in .env
+# Fill planner, image, and video keys in .env
 bash scripts/doctor.sh
-bash scripts/start-gateway.sh
-```
-
-In another terminal, install the local plugin into the DSH web profile and start DSH:
-
-```bash
 dsh plugin --profile web add "file:$PWD/dsh-plugin"
 dsh web
 ```
+
+Describe the film in DeepSeek Harness. The skill calls `reca_create_video`,
+polls `reca_get_status`, and retrieves the file with `reca_get_artifact`.
+The plugin starts the local runtime if it is not already healthy.
+
+`bash scripts/start-gateway.sh` is optional and only needed for HTTP clients
+that are not the DSH plugin.
 
 For the DSH conversation model, copy
 [`configs/dsh-settings.example.yaml`](configs/dsh-settings.example.yaml) to
@@ -69,20 +72,19 @@ bash scripts/run_demo.sh
 The demo submits [`examples/sun_wukong_battle.txt`](examples/sun_wukong_battle.txt) by default, polls the task, and reports the final artifact URL. Set `RECA_DEMO_STORY=examples/story.txt` to use the shorter generic story. Generated files are stored under `.dsh_runs/`, which is ignored by git.
 
 The Director request supports `story`, `duration`, `resolution`, `style`,
-`aspect_ratio`, `backend`, `enable_audit`, and `seed`. It also accepts optional
-`first_frame` and `reference_images` inputs. A first frame replaces the
-automatically generated anchor for the first shot; reference images are passed
-to anchor planning and are forwarded to segment rendering when the selected
-video backend supports reference media. Wan3.0 preserves ReCA's planner and
-serial segment chain while adapting only the provider mapping: I2V sends the
-current frame as its sole reference; R2V sends the current frame as
-`reference_image[0]`, followed by up to three planner-selected identity, scene,
-or prop references. The R2V prefix explicitly asks Wan3.0 to begin from the
-first reference. Bridges continue to use the provider's real first/last-frame
-pair. This is a soft start constraint because Wan3.0 does not expose a hard
-first-frame slot that can be combined with additional reference images. ReCA emits separate
-Gateway, ReCA, video, and audit states. A generated video may legitimately
-return `audit_skipped` or `audit_failed`.
+`aspect_ratio`, `backend`, `enable_audit`, and `seed`. Default resolution is
+`1280x720`; pass `1920x1080` when you want the same class of film as the
+showcase clips. Duration can stay unset so the planner follows the story.
+Wan3.0 preserves ReCA's planner and serial segment chain while adapting only
+the provider mapping: I2V sends the current frame as its sole reference; R2V
+sends the current frame as `reference_image[0]`, followed by up to three
+planner-selected identity, scene, or prop references. The R2V prefix explicitly
+asks Wan3.0 to begin from the first reference. Bridges continue to use the
+provider's real first/last-frame pair. This is a soft start constraint because
+Wan3.0 does not expose a hard first-frame slot that can be combined with
+additional reference images. ReCA emits separate Gateway, ReCA, video, and
+audit states. A generated video may legitimately return `audit_skipped` or
+`audit_failed`.
 
 ## Recorded replay demo
 

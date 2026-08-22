@@ -8,8 +8,9 @@ The product-level request fields are `duration`, `resolution`, `style`,
 The Gateway normalizes these into `run_config.json` and appends only the
 constraints to the existing ReCA planner input. It does not create shots.
 
-Run `bash scripts/doctor.sh` before starting the Gateway. The doctor reports
-only whether a key is present, never its value.
+Run `bash scripts/doctor.sh` after filling `.env`. The doctor reports only
+whether a key is present, never its value. Open DSH Web from this repository;
+the plugin loads `.env` into the bundled runtime.
 
 ## DSH conversation provider
 

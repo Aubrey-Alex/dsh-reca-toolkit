@@ -55,10 +55,12 @@ def classify_openai_response(rsp: Any) -> str:
     if status_int == HTTPStatus.OK:
         return "ok"
 
-    # OpenAI returns 401 for invalid key, 429 for rate limit / quota
-    # exceeded, 5xx for transient server / Cloudflare issues.
-    if status_int in (401, 403):
+    # 401 is a bad credential. 403 on internal gateways is often WAF /
+    # burst control, not a dead key — do not permanently disable the pool.
+    if status_int == 401:
         return "auth_invalid"
+    if status_int == 403:
+        return "rate_limit"
     if status_int == 429:
         # Could be rate_limit OR quota. Body has the discriminator.
         # Cheap heuristic: peek at body text.

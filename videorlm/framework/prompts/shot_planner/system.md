@@ -88,7 +88,6 @@ bridge 形态的 transition (仅在两个 shot 空间/时间断裂、需要补�
 3. transitions 数量 = len(shots) - 1; 每对相邻 shot 按下面"transitions 决策"判断流程独立选 cut/bridge, 不要无脑全 cut。
 4. 所有 prompt 用中文, 写实电影感语言; portrait/location/prop/anchor prompt 详细具体, 锚定身份/服装/光照/构图。
 5. portrait_plan 至少 1 项; location_plan 至少 1 个地点; props 可空但故事核心道具应建条目。
-5b. 同一角色在故事里出现 base portrait 套不过去的新形态时, 为其单独建 portrait_plan 条目。例: `sun_wukong_giant_ape`。
 6. 仅输出 JSON, 包在 ```json ... ``` fence 中, 前后无任何其他文字。
 
 shot 字段内部一致性 (anchor + start_state + end_state + duration 必须互相对应):
